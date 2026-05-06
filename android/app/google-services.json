@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "153846120403",
+    "project_id": "pfaa-9a614",
+    "storage_bucket": "pfaa-9a614.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:153846120403:android:c4adc1b21245e9f8d27926",
+        "android_client_info": {
+          "package_name": "com.example.vroomlog"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBLcGvH5fdq6D5pJ1s0lpVro6uaLbMOBKg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
