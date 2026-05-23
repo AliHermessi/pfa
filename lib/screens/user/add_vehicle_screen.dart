@@ -33,7 +33,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     _kmCtrl = TextEditingController(text: v?.kilometrage.toString() ?? '');
     _kmVidangeCtrl = TextEditingController(
         text: v?.kilometrageProchVidange.toString() ?? '');
-    _prochainControle = v?.prochainControle;
+    _prochainControle = (v != null && v.prochainControle.year > 2000) ? v.prochainControle : null;
   }
 
   @override
@@ -64,14 +64,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_prochainControle == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text('Veuillez sélectionner la date du contrôle technique')),
-      );
-      return;
-    }
 
     setState(() => _isLoading = true);
 
@@ -84,14 +76,14 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         immatriculation: _immaCtrl.text.trim().toUpperCase(),
         kilometrage: int.parse(_kmCtrl.text.trim()),
         kilometrageProchVidange: int.parse(_kmVidangeCtrl.text.trim()),
-        prochainControle: _prochainControle!,
+        prochainControle: _prochainControle ?? DateTime.fromMillisecondsSinceEpoch(0),
         sante: 0.8,
       );
 
       if (_isEditing) {
-        await VehicleService.updateVehicle(vehicle);
+        VehicleService.updateVehicle(vehicle);
       } else {
-        await VehicleService.addVehicle(vehicle);
+        VehicleService.addVehicle(vehicle);
       }
 
       if (mounted) {
@@ -164,30 +156,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   keyboardType: TextInputType.number,
                 ),
                 const SizedBox(height: 14),
-                GestureDetector(
-                  onTap: _pickDate,
-                  child: AbsorbPointer(
-                    child: TextFormField(
-                      decoration: InputDecoration(
-                        labelText: 'Date prochain contrôle technique',
-                        hintText: _prochainControle == null
-                            ? 'Sélectionner une date'
-                            : '${_prochainControle!.day}/${_prochainControle!.month}/${_prochainControle!.year}',
-                        suffixIcon: const Icon(Icons.calendar_today,
-                            color: Color(0xFF1976D2)),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8)),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 14),
-                      ),
-                      controller: TextEditingController(
-                        text: _prochainControle == null
-                            ? ''
-                            : '${_prochainControle!.day}/${_prochainControle!.month}/${_prochainControle!.year}',
-                      ),
-                    ),
-                  ),
-                ),
               ]),
               const SizedBox(height: 24),
               SizedBox(

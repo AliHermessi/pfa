@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import '../../models/intervention.dart';
 import '../../services/intervention_service.dart';
+import '../../services/payment_service.dart';
 import '../widgets/bottom_nav_bar.dart';
 import 'user_dashboard_screen.dart';
 import 'vehicles_screen.dart';
 import 'calendrier_screen.dart';
 import 'mecaniciens_screen.dart';
 import 'intervention_form_screen.dart';
+import 'payment_screen.dart';
+import '../widgets/rating_dialog.dart';
+import '../../services/rating_service.dart';
+import '../chat_screen.dart';
 
 class HistoriqueScreen extends StatefulWidget {
   const HistoriqueScreen({super.key});
@@ -70,9 +75,9 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
         context, MaterialPageRoute(builder: (_) => screen));
   }
 
-  Future<void> _deleteIntervention(String id) async {
+  Future<void> _deleteIntervention(Intervention intervention) async {
     try {
-      await InterventionService.deleteIntervention(id);
+      await InterventionService.deleteIntervention(intervention);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Intervention supprimée')),
@@ -86,6 +91,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
       }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -249,7 +255,8 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                         itemBuilder: (_, i) => _HistoriqueCard(
                           intervention: filtered[i],
                           onDelete: () =>
-                              _deleteIntervention(filtered[i].id),
+                              _deleteIntervention(filtered[i]),
+
                           onEdit: () => Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -284,7 +291,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
 
 // ── Historique Card ──────────────────────────────────────────────────────────
 
-class _HistoriqueCard extends StatelessWidget {
+class _HistoriqueCard extends StatefulWidget {
   final Intervention intervention;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
@@ -294,6 +301,17 @@ class _HistoriqueCard extends StatelessWidget {
     required this.onDelete,
     required this.onEdit,
   });
+
+  @override
+  State<_HistoriqueCard> createState() => _HistoriqueCardState();
+}
+
+class _HistoriqueCardState extends State<_HistoriqueCard> {
+  bool _isPaymentLoading = false;
+
+  Intervention get intervention => widget.intervention;
+  VoidCallback get onDelete => widget.onDelete;
+  VoidCallback get onEdit => widget.onEdit;
 
   IconData get _icon {
     switch (intervention.type) {
@@ -431,11 +449,22 @@ class _HistoriqueCard extends StatelessWidget {
                     color: Color(0xFF1976D2)),
               ),
               const SizedBox(height: 4),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert,
-                    size: 18, color: Colors.grey),
-                padding: EdgeInsets.zero,
-                onSelected: (v) {
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(intervention: intervention))),
+                    icon: const Icon(Icons.chat_bubble_outline, color: Colors.blue, size: 20),
+                    tooltip: 'Voir la discussion',
+                  ),
+                  const SizedBox(width: 12),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert,
+                        size: 18, color: Colors.grey),
+                    padding: EdgeInsets.zero,
+                    onSelected: (v) {
                   if (v == 'edit') onEdit();
                   if (v == 'delete') onDelete();
                 },
@@ -463,10 +492,168 @@ class _HistoriqueCard extends StatelessWidget {
                       )),
                 ],
               ),
+              ],
+            ),
+            if (intervention.statut == InterventionStatut.termine &&
+                  intervention.mecanicienId != null) ...[
+                const SizedBox(height: 8),
+                // ── Bouton Payer / Badge Payé ──────────────────────────
+                if (!intervention.estPaye)
+                  _isPaymentLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : ElevatedButton.icon(
+                          onPressed: () => _startPayment(context),
+                          icon: const Icon(Icons.payment, size: 14),
+                          label: const Text('Payer',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF43A047),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(20)),
+                          ),
+                        )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: const Color(0xFF43A047), width: 0.5),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle,
+                            color: Color(0xFF43A047), size: 13),
+                        SizedBox(width: 4),
+                        Text('Payé',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF43A047))),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 6),
+                // ── Bouton Noter ───────────────────────────────────────
+                if (intervention.noteClient == null)
+                  ElevatedButton(
+                    onPressed: () async {
+                      final note = await showDialog<int>(
+                        context: context,
+                        builder: (ctx) => RatingDialog(
+                            mecanicienNom: intervention.mecanicienNom ?? 'le mécanicien'),
+                      );
+                      if (note != null) {
+                        try {
+                          await RatingService.submitRating(
+                              intervention.mecanicienId!,
+                              intervention.id,
+                              intervention.userId,
+                              note);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Merci pour votre évaluation !')));
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Erreur: $e')));
+                          }
+                        }
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFB300),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('⭐ Noter', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  )
+                else
+                  Row(
+                    children: [
+                      const Icon(Icons.star, color: Color(0xFFFFB300), size: 14),
+                      const SizedBox(width: 4),
+                      Text('${intervention.noteClient}/5', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                    ],
+                  ),
+              ],
             ],
           ),
         ],
       ),
     );
+  }
+
+  // ── Lancer le flux de paiement Flouci ─────────────────────────────────────
+  Future<void> _startPayment(BuildContext context) async {
+    setState(() => _isPaymentLoading = true);
+
+    try {
+      final result = await PaymentService.generatePayment(
+        amountInDT: intervention.prixEstime,
+        trackingId: intervention.id,
+      );
+
+      final paymentUrl = result['link']!;
+      final paymentId = result['paymentId']!;
+
+      if (!context.mounted) return;
+
+      final success = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PaymentScreen(
+            paymentUrl: paymentUrl,
+            paymentId: paymentId,
+            intervention: intervention,
+          ),
+        ),
+      );
+
+      if (success == true && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Text('Paiement effectué avec succès !'),
+              ],
+            ),
+            backgroundColor: Color(0xFF43A047),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de paiement : $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPaymentLoading = false);
+    }
   }
 }

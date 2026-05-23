@@ -159,6 +159,14 @@ class _VehicleCard extends StatelessWidget {
     required this.onEdit,
   });
 
+  String _capitalize(String text) {
+    if (text.isEmpty) return '';
+    return text.split(' ').map((word) {
+      if (word.isEmpty) return '';
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isWarning = vehicle.vidangeUrgente || vehicle.sante < 0.5;
@@ -191,7 +199,7 @@ class _VehicleCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  vehicle.nomComplet,
+                  _capitalize(vehicle.nomComplet),
                   style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -207,7 +215,7 @@ class _VehicleCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        vehicle.immatriculation,
+                        vehicle.immatriculation.toUpperCase(),
                         style: TextStyle(
                             color: headerColor,
                             fontWeight: FontWeight.bold,
@@ -240,12 +248,14 @@ class _VehicleCard extends StatelessWidget {
             child: Column(
               children: [
                 _InfoRow(
+                  icon: Icons.speed_outlined,
                   label: 'Kilométrage',
                   value:
                       '${vehicle.kilometrage.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ')} km',
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 _InfoRow(
+                  icon: Icons.oil_barrel_outlined,
                   label: 'Prochaine vidange',
                   value: vehicle.vidangeUrgente
                       ? '${vehicle.kmAvantVidange.abs()} km dépassé !'
@@ -254,18 +264,18 @@ class _VehicleCard extends StatelessWidget {
                       ? const Color(0xFFE65100)
                       : const Color(0xFF2E7D32),
                 ),
-                const SizedBox(height: 6),
-                _InfoRow(
-                  label: 'Contrôle technique',
-                  value:
-                      '${vehicle.prochainControle.day}/${vehicle.prochainControle.month}/${vehicle.prochainControle.year}',
-                ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Santé générale',
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const Row(
+                      children: [
+                        Icon(Icons.healing_outlined, size: 16, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Text('Santé générale',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
                     Text(
                       '${(vehicle.sante * 100).toInt()}%',
                       style: TextStyle(
@@ -301,18 +311,30 @@ class _VehicleCard extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
+  final IconData icon;
   final String label;
   final String value;
   final Color? valueColor;
 
-  const _InfoRow({required this.label, required this.value, this.valueColor});
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+        Row(
+          children: [
+            Icon(icon, size: 16, color: Colors.grey.shade600),
+            const SizedBox(width: 8),
+            Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          ],
+        ),
         Text(value,
             style: TextStyle(
                 fontSize: 13,

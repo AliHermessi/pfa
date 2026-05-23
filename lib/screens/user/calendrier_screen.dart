@@ -115,7 +115,11 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
           ? const Color(0xFF2E7D32)
           : i.statut == InterventionStatut.enCours
               ? const Color(0xFF1976D2)
-              : const Color(0xFFE65100);
+              : i.statut == InterventionStatut.enAttente
+                  ? Colors.orange
+                  : i.statut == InterventionStatut.annule
+                      ? Colors.red
+                      : const Color(0xFFE65100);
 
       events.add(_CalendrierEvent(
         date: i.date,
@@ -258,81 +262,85 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                               .toList(),
                         ),
                         const SizedBox(height: 6),
-                        // Grille des jours
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 7,
-                            childAspectRatio: 1,
-                            mainAxisSpacing: 2,
-                            crossAxisSpacing: 2,
-                          ),
-                          itemCount: (startWeekday - 1) + daysInMonth,
-                          itemBuilder: (_, index) {
-                            if (index < startWeekday - 1) {
-                              return const SizedBox();
-                            }
-                            final day = index - (startWeekday - 1) + 1;
-                            final date = DateTime(
-                                _focusedMonth.year, _focusedMonth.month, day);
-                            final hasEvent = _eventsForDay(allEvents, date).isNotEmpty;
-                            final isToday =
-                                date.year == DateTime.now().year &&
-                                    date.month == DateTime.now().month &&
-                                    date.day == DateTime.now().day;
-                            final isSelected = _selectedDay != null &&
-                                _selectedDay!.day == day &&
-                                _selectedDay!.month == _focusedMonth.month &&
-                                _selectedDay!.year == _focusedMonth.year;
+                        Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 500),
+                            child: GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 7,
+                                childAspectRatio: 1.2, // Légèrement plus large que haut
+                                mainAxisSpacing: 2,
+                                crossAxisSpacing: 2,
+                              ),
+                              itemCount: (startWeekday - 1) + daysInMonth,
+                              itemBuilder: (_, index) {
+                                if (index < startWeekday - 1) {
+                                  return const SizedBox();
+                                }
+                                final day = index - (startWeekday - 1) + 1;
+                                final date = DateTime(
+                                    _focusedMonth.year, _focusedMonth.month, day);
+                                final hasEvent = _eventsForDay(allEvents, date).isNotEmpty;
+                                final isToday =
+                                    date.year == DateTime.now().year &&
+                                        date.month == DateTime.now().month &&
+                                        date.day == DateTime.now().day;
+                                final isSelected = _selectedDay != null &&
+                                    _selectedDay!.day == day &&
+                                    _selectedDay!.month == _focusedMonth.month &&
+                                    _selectedDay!.year == _focusedMonth.year;
 
-                            return GestureDetector(
-                              onTap: () => setState(() {
-                                _selectedDay = isSelected ? null : date;
-                              }),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    width: 28,
-                                    height: 28,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: isSelected
-                                          ? Colors.white
-                                          : isToday
-                                              ? Colors.white.withOpacity(0.3)
-                                              : Colors.transparent,
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '$day',
-                                        style: TextStyle(
-                                          fontSize: 12,
+                                return GestureDetector(
+                                  onTap: () => setState(() {
+                                    _selectedDay = isSelected ? null : date;
+                                  }),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
                                           color: isSelected
-                                              ? const Color(0xFF1976D2)
-                                              : Colors.white,
-                                          fontWeight: isToday || isSelected
-                                              ? FontWeight.bold
-                                              : FontWeight.normal,
+                                              ? Colors.white
+                                              : isToday
+                                                  ? Colors.white.withOpacity(0.3)
+                                                  : Colors.transparent,
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            '$day',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: isSelected
+                                                  ? const Color(0xFF1976D2)
+                                                  : Colors.white,
+                                              fontWeight: isToday || isSelected
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                    ),
+                                      if (hasEvent)
+                                        Container(
+                                          width: 4,
+                                          height: 4,
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFFFFD54F),
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                    ],
                                   ),
-                                  if (hasEvent)
-                                    Container(
-                                      width: 4,
-                                      height: 4,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFFFFD54F),
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            );
-                          },
+                                );
+                              },
+                            ),
+                          ),
                         ),
                       ],
                     ),

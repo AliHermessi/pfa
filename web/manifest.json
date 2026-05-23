@@ -1,20 +1,11 @@
 {
-<<<<<<< HEAD
     "name": "vroomlog",
     "short_name": "vroomlog",
-=======
-    "name": "pfa",
-    "short_name": "pfa",
->>>>>>> b96ebe97133ea95f27c8596653e641359d86acb8
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-<<<<<<< HEAD
     "description": "A new Flutter project.",
-=======
-    "description": "projet pfa mobile",
->>>>>>> b96ebe97133ea95f27c8596653e641359d86acb8
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

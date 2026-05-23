@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import '../../models/intervention.dart';
 import '../../models/vehicle.dart';
+import '../../models/mecanicien.dart';
 import '../../services/intervention_service.dart';
 import '../../services/vehicle_service.dart';
+import '../../services/planning_service.dart';
 
 class InterventionFormScreen extends StatefulWidget {
   final Intervention? intervention; // null = ajout, non-null = modification
@@ -20,8 +24,12 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
   late final TextEditingController _piecesCtrl;
 
   Vehicle? _selectedVehicle;
+  Mecanicien? _selectedMecanicien;
   late InterventionType _selectedType;
   DateTime? _selectedDate;
+  int? _selectedHeure;
+  List<int> _occupes = [];
+  bool _isLoadingSlots = false;
   late InterventionStatut _selectedStatut;
   bool _isLoading = false;
 
@@ -48,7 +56,10 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
         TextEditingController(text: i != null ? i.pieces.join(', ') : '');
     _selectedType = i?.type ?? InterventionType.vidange;
     _selectedDate = i?.date;
-    _selectedStatut = i?.statut ?? InterventionStatut.planifie;
+    if (i?.date != null && i?.mecanicienId != null) {
+      _selectedHeure = i!.date.hour;
+    }
+    _selectedStatut = i?.statut ?? InterventionStatut.enAttente;
   }
 
   @override
@@ -63,7 +74,7 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? DateTime.now(),
-      firstDate: DateTime(2020),
+      firstDate: DateTime.now(), // On ne peut pas planifier dans le passé
       lastDate: DateTime(2030),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
@@ -72,10 +83,34 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
         child: child!,
       ),
     );
-    if (picked != null) setState(() => _selectedDate = picked);
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+        _selectedHeure = null;
+      });
+      if (_selectedMecanicien != null) {
+        _fetchSlots(picked);
+      }
+    }
+  }
+
+  Future<void> _fetchSlots(DateTime date) async {
+    if (_selectedMecanicien == null) return;
+    setState(() => _isLoadingSlots = true);
+    try {
+      final occupes = await PlanningService.getCreneauxOccupes(_selectedMecanicien!.id, date);
+      if (mounted) setState(() => _occupes = occupes);
+    } catch (e) {
+      // Ignorer erreur silencieusement
+    } finally {
+      if (mounted) setState(() => _isLoadingSlots = false);
+    }
   }
 
   Future<void> _submit() async {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId == null) return;
+
     if (_selectedVehicle == null && !_isEditing) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Veuillez sélectionner un véhicule')),
@@ -86,6 +121,12 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
     if (_selectedDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Veuillez choisir une date')),
+      );
+      return;
+    }
+    if (_selectedMecanicien != null && _selectedHeure == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez choisir une heure de rendez-vous')),
       );
       return;
     }
@@ -106,19 +147,26 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
             _selectedVehicle?.id ?? widget.intervention?.vehiculeId ?? '',
         vehiculeNom:
             _selectedVehicle?.nomComplet ?? widget.intervention?.vehiculeNom ?? '',
+        userId: currentUserId,
         type: _selectedType,
         description: _descriptionCtrl.text.trim(),
         pieces: pieces,
         prixEstime: double.tryParse(_prixCtrl.text.trim()) ?? 0,
-        date: _selectedDate!,
-        statut: _selectedStatut,
-        mecanicienNom: widget.intervention?.mecanicienNom,
+        date: _selectedHeure != null
+            ? DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, _selectedHeure!)
+            : _selectedDate!,
+        statut: _isEditing ? _selectedStatut : InterventionStatut.enAttente,
+        mecanicienNom: _selectedMecanicien?.nom ?? widget.intervention?.mecanicienNom,
+        mecanicienId: _selectedMecanicien?.id ?? widget.intervention?.mecanicienId,
       );
 
       if (_isEditing) {
-        await InterventionService.updateIntervention(intervention);
+        await InterventionService.addIntervention(intervention);
       } else {
         await InterventionService.addIntervention(intervention);
+        if (_selectedMecanicien != null && _selectedHeure != null) {
+          await PlanningService.bloquerCreneau(_selectedMecanicien!.id, intervention.date);
+        }
       }
 
       if (mounted) {
@@ -126,7 +174,7 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
           SnackBar(
             content: Text(_isEditing
                 ? 'Intervention modifiée avec succès !'
-                : 'Intervention ajoutée avec succès !'),
+                : 'Demande envoyée au mécanicien !'),
             backgroundColor: const Color(0xFF2E7D32),
           ),
         );
@@ -168,7 +216,7 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
           key: _formKey,
           child: Column(
             children: [
-              // ── Véhicule (seulement si ajout) ─────────────────────────
+              // ── Véhicule ──────────────────────────────────────────────
               if (!_isEditing) ...[
                 _buildCard(
                   title: 'Véhicule concerné',
@@ -178,20 +226,12 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
                       final vehicles = snapshot.data ?? [];
                       return DropdownButtonFormField<Vehicle>(
                         value: _selectedVehicle,
-                        hint: snapshot.connectionState ==
-                                ConnectionState.waiting
-                            ? const Text('Chargement...')
-                            : const Text('Sélectionner un véhicule'),
+                        hint: const Text('Sélectionner un véhicule'),
                         decoration: InputDecoration(
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8)),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 14),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(
-                                color: Color(0xFF1976D2), width: 2),
-                          ),
                         ),
                         items: vehicles
                             .map((v) => DropdownMenuItem(
@@ -209,30 +249,42 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
                 const SizedBox(height: 14),
               ],
 
-              // ── Véhicule (affichage si modification) ──────────────────
-              if (_isEditing) ...[
+              // ── Mécanicien ─────────────────────────────────────────────
+              if (!_isEditing) ...[
                 _buildCard(
-                  title: 'Véhicule',
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.directions_car,
-                            color: Color(0xFF1976D2), size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          widget.intervention!.vehiculeNom,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w500, fontSize: 14),
+                  title: 'Choisir un mécanicien',
+                  child: StreamBuilder<DatabaseEvent>(
+                    stream: FirebaseDatabase.instance.ref('mecaniciens').onValue,
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData || snapshot.data?.snapshot.value == null) {
+                        return const Text('Aucun mécanicien disponible');
+                      }
+                      final data = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+                      final list = data.entries.map((e) => Mecanicien.fromMap(e.key as String, e.value as Map)).toList();
+
+                      return DropdownButtonFormField<Mecanicien>(
+                        value: _selectedMecanicien,
+                        hint: const Text('Sélectionner un mécanicien'),
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 14),
                         ),
-                      ],
-                    ),
+                        items: list
+                            .map((m) => DropdownMenuItem(
+                                  value: m,
+                                  child: Text('${m.nom} (${m.specialite})'),
+                                ))
+                            .toList(),
+                        onChanged: (m) {
+                            setState(() => _selectedMecanicien = m);
+                            if (_selectedDate != null && m != null) {
+                              _fetchSlots(_selectedDate!);
+                            }
+                        },
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -292,37 +344,6 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-
-              // ── Statut (seulement si modification) ────────────────────
-              if (_isEditing) ...[
-                _buildCard(
-                  title: 'Statut',
-                  child: DropdownButtonFormField<InterventionStatut>(
-                    value: _selectedStatut,
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 14),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                          value: InterventionStatut.planifie,
-                          child: Text('Planifié')),
-                      DropdownMenuItem(
-                          value: InterventionStatut.enCours,
-                          child: Text('En cours')),
-                      DropdownMenuItem(
-                          value: InterventionStatut.termine,
-                          child: Text('Terminé')),
-                    ],
-                    onChanged: (v) {
-                      if (v != null) setState(() => _selectedStatut = v);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
 
               // ── Détails ───────────────────────────────────────────────
               _buildCard(
@@ -389,6 +410,10 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
                         ),
                       ],
                     ),
+                    if (_selectedDate != null && _selectedMecanicien != null) ...[
+                      const SizedBox(height: 14),
+                      _buildTimeSlots(),
+                    ],
                     const SizedBox(height: 14),
                     _buildField(
                       'Description / Note',
@@ -465,6 +490,72 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
     );
   }
 
+  Widget _buildTimeSlots() {
+    if (_isLoadingSlots) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final debut = _selectedMecanicien!.heuresDebut;
+    final fin = _selectedMecanicien!.heuresFin;
+    final slots = <int>[];
+    for (int i = debut; i < fin; i++) {
+      slots.add(i);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Heure du rendez-vous', style: TextStyle(fontSize: 12, color: Colors.grey)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: slots.map((heure) {
+            final isOccupied = _occupes.contains(heure);
+            final isSelected = _selectedHeure == heure;
+            
+            return GestureDetector(
+              onTap: isOccupied ? null : () {
+                setState(() => _selectedHeure = heure);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isOccupied
+                      ? Colors.grey.shade200
+                      : isSelected
+                          ? const Color(0xFF1976D2)
+                          : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isOccupied
+                        ? Colors.grey.shade300
+                        : isSelected
+                            ? const Color(0xFF1976D2)
+                            : Colors.grey.shade300,
+                  ),
+                ),
+                child: Text(
+                  '${heure.toString().padLeft(2, '0')}:00',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isOccupied
+                        ? Colors.grey.shade400
+                        : isSelected
+                            ? Colors.white
+                            : Colors.grey.shade800,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
   Widget _buildField(
     String label,
     String hint,
@@ -511,3 +602,4 @@ class _TypeOption {
   final IconData icon;
   const _TypeOption(this.type, this.label, this.icon);
 }
+

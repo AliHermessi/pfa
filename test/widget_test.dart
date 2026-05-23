@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vroomlog/main.dart';
+import 'package:pfa_main/main.dart';
 
 void main() {
   testWidgets('Hello World smoke test', (WidgetTester tester) async {

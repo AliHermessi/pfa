@@ -1,73 +1,147 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class AuthService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
+  static final DatabaseReference _db = FirebaseDatabase.instance.ref();
 
-  // ── Utilisateur connecté actuellement ──────────────────────────────────
-  static User? get currentUser => _auth.currentUser;
-
-  // ── Stream pour écouter les changements d'état ─────────────────────────
-  static Stream<User?> get authStateChanges => _auth.authStateChanges();
-
-  // ── Inscription ────────────────────────────────────────────────────────
-  static Future<UserCredential?> register({
+  // ── REGISTER ────────────────────────────────────────────────────────────────
+  static Future<void> register({
     required String email,
     required String password,
     required String nom,
+    required String role, // 'user', 'mecanicien', 'admin'
+    String? specialite,
+    String? telephone,
   }) async {
-    try {
-      final credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
-      );
-      // Mettre à jour le nom d'affichage
-      await credential.user?.updateDisplayName(nom.trim());
-      return credential;
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthError(e);
+    // 1. Créer le compte Firebase Auth
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    final uid = credential.user!.uid;
+
+    // 2. Mettre à jour le displayName
+    await credential.user!.updateDisplayName(nom);
+
+    // 3. Enregistrer dans la bonne collection selon le rôle
+    if (role == 'mecanicien') {
+      // Mécanicien → dans /mecaniciens avec isApproved: false
+      await _db.child('mecaniciens/$uid').set({
+        'id': uid,
+        'nom': nom,
+        'email': email,
+        'specialite': specialite ?? '',
+        'telephone': telephone ?? '',
+        'role': 'mecanicien',
+        'isApproved': false, // Doit être approuvé par l'admin
+        'disponible': true,
+        'note': 0.0,
+        'nombreAvis': 0,
+        'distanceKm': 0.0,
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } else {
+      // User standard → dans /users
+      await _db.child('users/$uid').set({
+        'id': uid,
+        'nom': nom,
+        'email': email,
+        'role': role, // 'user' ou 'admin'
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+      });
     }
   }
 
-  // ── Connexion ──────────────────────────────────────────────────────────
-  static Future<UserCredential?> login({
+  // ── LOGIN ───────────────────────────────────────────────────────────────────
+  /// Retourne le rôle de l'utilisateur connecté.
+  /// Pour les mécaniciens non approuvés, throw une exception.
+  static Future<String> login({
     required String email,
     required String password,
   }) async {
+    final credential = await _auth.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    final uid = credential.user!.uid;
+
     try {
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
+      // On lance les deux recherches en parallèle pour gagner du temps
+      final Future<DataSnapshot> userFuture = _db.child('users/$uid').get();
+      final Future<DataSnapshot> mecaFuture = _db.child('mecaniciens/$uid').get();
+
+      final results = await Future.wait([userFuture, mecaFuture]).timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => throw TimeoutException('Délai d\'attente dépassé'),
       );
-      return credential;
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthError(e);
+
+      final userSnap = results[0];
+      final mecaSnap = results[1];
+
+      // 1. Vérifier si c'est un utilisateur/admin
+      if (userSnap.exists) {
+        final data = userSnap.value;
+        if (data is Map) {
+          return data['role'] as String? ?? 'user';
+        }
+      }
+
+      // 2. Vérifier si c'est un mécanicien
+      if (mecaSnap.exists) {
+        final data = mecaSnap.value;
+        if (data is Map) {
+          final isApproved = data['isApproved'] as bool? ?? false;
+          if (!isApproved) {
+            await _auth.signOut();
+            throw Exception(
+                'Votre compte mécanicien est en attente d\'approbation par l\'administrateur.');
+          }
+          return 'mecanicien';
+        }
+      }
+    } catch (e) {
+      print('AuthService: Erreur ou timeout lors de la récupération du rôle : $e');
     }
+
+    // Fallback (pas dans la DB → user normal)
+    return 'user';
   }
 
-  // ── Déconnexion ────────────────────────────────────────────────────────
+  // ── LOGOUT ──────────────────────────────────────────────────────────────────
   static Future<void> logout() async {
     await _auth.signOut();
   }
 
-  // ── Messages d'erreur en français ─────────────────────────────────────
-  static String _handleAuthError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'user-not-found':
-        return 'Aucun compte trouvé avec cet email.';
-      case 'wrong-password':
-        return 'Mot de passe incorrect.';
-      case 'email-already-in-use':
-        return 'Cet email est déjà utilisé.';
-      case 'weak-password':
-        return 'Le mot de passe doit contenir au moins 6 caractères.';
-      case 'invalid-email':
-        return 'Adresse email invalide.';
-      case 'too-many-requests':
-        return 'Trop de tentatives. Réessayez plus tard.';
-      case 'network-request-failed':
-        return 'Pas de connexion internet.';
-      default:
-        return 'Une erreur est survenue : ${e.message}';
+  // ── GET CURRENT ROLE ────────────────────────────────────────────────────────
+  static Future<String> getCurrentRole() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return 'none';
+
+    try {
+      // Vérifier user/admin d'abord
+      final userSnap = await _db.child('users/$uid').get();
+      if (userSnap.exists) {
+        final data = userSnap.value;
+        if (data is Map) {
+          return data['role'] as String? ?? 'user';
+        }
+      }
+
+      // Vérifier mécanicien
+      final mecaSnap = await _db.child('mecaniciens/$uid').get();
+      if (mecaSnap.exists) {
+        final data = mecaSnap.value;
+        if (data is Map) {
+          final isApproved = data['isApproved'] as bool? ?? false;
+          return isApproved ? 'mecanicien' : 'mecanicien_pending';
+        }
+      }
+    } catch (e) {
+      print('AuthService: Erreur getCurrentRole : $e');
     }
+
+    return 'user';
   }
 }

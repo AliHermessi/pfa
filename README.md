@@ -1,12 +1,6 @@
-<<<<<<< HEAD
 # vroomlog
 
 A new Flutter project.
-=======
-# pfa
-
-projet pfa mobile
->>>>>>> b96ebe97133ea95f27c8596653e641359d86acb8
 
 ## Getting Started
 

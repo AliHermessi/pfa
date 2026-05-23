@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_database/firebase_database.dart';
 import '../../models/mecanicien.dart';
+import '../../models/intervention.dart';
+
 import '../widgets/bottom_nav_bar.dart';
+
 import 'user_dashboard_screen.dart';
 import 'vehicles_screen.dart';
 import 'historique_screen.dart';
 import 'calendrier_screen.dart';
 import 'intervention_form_screen.dart';
+import 'carte_mecaniciens_screen.dart';
 
 class MecaniciensScreen extends StatefulWidget {
   const MecaniciensScreen({super.key});
@@ -22,54 +27,22 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
 
   final List<String> _filters = ['Tous', 'Proche', 'Disponible', '5 étoiles'];
 
-  // ── Données fictives ────────────────────────────────────────────────────
-  final List<Mecanicien> _mecaniciens = [
-    Mecanicien(
-      id: '1',
-      nom: 'Mohamed Ali',
-      specialite: 'Vidange · Freins · Suspension',
-      note: 4.9,
-      nombreAvis: 28,
-      distanceKm: 0.8,
-      disponible: true,
-      telephone: '+216 22 000 001',
-    ),
-    Mecanicien(
-      id: '2',
-      nom: 'Khaled Hamdi',
-      specialite: 'Électricité · Batterie · Diagnostic',
-      note: 4.6,
-      nombreAvis: 15,
-      distanceKm: 1.3,
-      disponible: true,
-      telephone: '+216 22 000 002',
-    ),
-    Mecanicien(
-      id: '3',
-      nom: 'Sonia Amri',
-      specialite: 'Pneus · Géométrie · Jantes',
-      note: 5.0,
-      nombreAvis: 9,
-      distanceKm: 2.1,
-      disponible: false,
-      telephone: '+216 22 000 003',
-    ),
-    Mecanicien(
-      id: '4',
-      nom: 'Rami Jebali',
-      specialite: 'Moteur · Boîte vitesse · Embrayage',
-      note: 4.3,
-      nombreAvis: 42,
-      distanceKm: 3.5,
-      disponible: true,
-      telephone: '+216 22 000 004',
-    ),
-  ];
-  // ────────────────────────────────────────────────────────────────────────
+  // ── Données réelles depuis Firebase ───────────────────────────────────────
+  Stream<List<Mecanicien>> _getMecaniciensStream() {
+    return FirebaseDatabase.instance.ref('mecaniciens').onValue.map((event) {
+      final data = event.snapshot.value;
+      if (data == null) return [];
+      final map = data as Map<dynamic, dynamic>;
+      final list = map.entries
+          .where((e) => e.value is Map)
+          .map((e) => Mecanicien.fromMap(e.key as String, e.value as Map))
+          .where((m) => m.isApproved) // Seulement les mécaniciens approuvés
+          .toList();
+      return list;
+    });
+  }
 
-  List<Mecanicien> get _filtered {
-    List<Mecanicien> list = _mecaniciens;
-
+  List<Mecanicien> _applyFilters(List<Mecanicien> list) {
     if (_searchQuery.isNotEmpty) {
       list = list
           .where((m) =>
@@ -92,6 +65,7 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
 
     return list;
   }
+
 
   void _onNavTap(int index) {
     if (index == _currentIndex) return;
@@ -119,9 +93,27 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
   void _choisirMecanicien(Mecanicien m) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const InterventionFormScreen()),
+      MaterialPageRoute(
+        builder: (_) => InterventionFormScreen(
+          intervention: Intervention(
+            id: '',
+            vehiculeId: '',
+            vehiculeNom: '',
+            userId: '',
+            type: InterventionType.vidange,
+            description: '',
+            pieces: [],
+            prixEstime: 0,
+            date: DateTime.now(),
+            statut: InterventionStatut.enAttente,
+            mecanicienId: m.id,
+            mecanicienNom: m.nom,
+          ),
+        ),
+      ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -135,6 +127,21 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
+          // ── Bouton bascule vers la carte ────────────────────────────
+          Tooltip(
+            message: 'Voir sur la carte',
+            child: IconButton(
+              icon: const Icon(Icons.map_outlined, color: Colors.white),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CarteMecaniciensScreen(),
+                  ),
+                );
+              },
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Row(
@@ -235,30 +242,43 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
             ),
           ),
 
-          // ── Liste ─────────────────────────────────────────────────────
           Expanded(
-            child: _filtered.isEmpty
-                ? const Center(
+            child: StreamBuilder<List<Mecanicien>>(
+              stream: _getMecaniciensStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                
+                final allMecaniciens = snapshot.data ?? [];
+                final filtered = _applyFilters(allMecaniciens);
+
+                if (filtered.isEmpty) {
+                  return const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.build_outlined,
-                            size: 48, color: Colors.grey),
+                        Icon(Icons.build_outlined, size: 48, color: Colors.grey),
                         SizedBox(height: 8),
                         Text('Aucun mécanicien trouvé',
                             style: TextStyle(color: Colors.grey)),
                       ],
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _filtered.length,
-                    itemBuilder: (_, i) => _MecanicienCard(
-                      mecanicien: _filtered[i],
-                      onChoisir: () => _choisirMecanicien(_filtered[i]),
-                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filtered.length,
+                  itemBuilder: (_, i) => _MecanicienCard(
+                    mecanicien: filtered[i],
+                    onChoisir: () => _choisirMecanicien(filtered[i]),
                   ),
+                );
+              },
+            ),
           ),
+
         ],
       ),
       bottomNavigationBar: UserBottomNavBar(

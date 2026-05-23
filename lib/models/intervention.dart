@@ -1,4 +1,4 @@
-enum InterventionStatut { enCours, termine, planifie }
+enum InterventionStatut { enCours, termine, planifie, enAttente, annule }
 
 enum InterventionType { vidange, pneus, batterie, freins, filtreAir, autre }
 
@@ -6,6 +6,7 @@ class Intervention {
   final String id;
   final String vehiculeId;
   final String vehiculeNom;
+  final String userId; // ID de l'utilisateur qui a créé l'intervention
   final InterventionType type;
   final String description;
   final List<String> pieces;
@@ -13,11 +14,15 @@ class Intervention {
   final DateTime date;
   final InterventionStatut statut;
   final String? mecanicienNom;
+  final String? mecanicienId; // ID du mécanicien assigné
+  final int? noteClient;
+  final bool estPaye;
 
   Intervention({
     required this.id,
     required this.vehiculeId,
     required this.vehiculeNom,
+    required this.userId,
     required this.type,
     required this.description,
     required this.pieces,
@@ -25,6 +30,9 @@ class Intervention {
     required this.date,
     required this.statut,
     this.mecanicienNom,
+    this.mecanicienId,
+    this.noteClient,
+    this.estPaye = false,
   });
 
   String get typeLabel {
@@ -52,6 +60,10 @@ class Intervention {
         return 'Terminé';
       case InterventionStatut.planifie:
         return 'Planifié';
+      case InterventionStatut.enAttente:
+        return 'En attente';
+      case InterventionStatut.annule:
+        return 'Annulé';
     }
   }
 
@@ -60,6 +72,7 @@ class Intervention {
     return {
       'vehiculeId': vehiculeId,
       'vehiculeNom': vehiculeNom,
+      'userId': userId,
       'type': type.index,
       'description': description,
       'pieces': pieces,
@@ -67,6 +80,9 @@ class Intervention {
       'date': date.millisecondsSinceEpoch,
       'statut': statut.index,
       'mecanicienNom': mecanicienNom,
+      'mecanicienId': mecanicienId,
+      'noteClient': noteClient,
+      'estPaye': estPaye,
     };
   }
 
@@ -80,6 +96,7 @@ class Intervention {
       id: id,
       vehiculeId: map['vehiculeId'] as String? ?? '',
       vehiculeNom: map['vehiculeNom'] as String? ?? '',
+      userId: map['userId'] as String? ?? '',
       type: InterventionType.values[(map['type'] as num?)?.toInt() ?? 0],
       description: map['description'] as String? ?? '',
       pieces: pieces,
@@ -90,6 +107,10 @@ class Intervention {
       statut:
           InterventionStatut.values[(map['statut'] as num?)?.toInt() ?? 0],
       mecanicienNom: map['mecanicienNom'] as String?,
+      mecanicienId: map['mecanicienId'] as String?,
+      noteClient: (map['noteClient'] as num?)?.toInt(),
+      estPaye: map['estPaye'] as bool? ?? false,
     );
   }
 }
+

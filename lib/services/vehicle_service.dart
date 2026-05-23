@@ -3,28 +3,31 @@ import 'package:firebase_database/firebase_database.dart';
 import '../models/vehicle.dart';
 
 class VehicleService {
-  static FirebaseDatabase get _db => FirebaseDatabase.instanceFor(
-        app: FirebaseDatabase.instance.app,
-        databaseURL: 'https://pfaa-9a614-default-rtdb.firebaseio.com',
-      );
+  static final DatabaseReference _db = FirebaseDatabase.instance.ref();
 
   // ── Référence pour l'utilisateur connecté ─────────────────────────────────
   static DatabaseReference _userVehiclesRef() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) throw Exception('Utilisateur non connecté');
-    return _db.ref('vehicles/$uid');
+    return _db.child('vehicles/$uid');
   }
 
   // ── Stream en temps réel ───────────────────────────────────────────────────
   static Stream<List<Vehicle>> vehiclesStream() {
-    return _userVehiclesRef().onValue.map((event) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return Stream.value([]);
+
+    return _db.child('vehicles/$uid').onValue.map((event) {
       final data = event.snapshot.value;
       if (data == null) return [];
-      final map = data as Map<dynamic, dynamic>;
-      return map.entries
-          .where((e) => e.value is Map)
-          .map((e) => Vehicle.fromMap(e.key as String, e.value as Map))
-          .toList();
+
+      if (data is Map) {
+        return data.entries
+            .where((e) => e.value is Map)
+            .map((e) => Vehicle.fromMap(e.key as String, e.value as Map))
+            .toList();
+      }
+      return [];
     });
   }
 
