@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../models/intervention.dart';
 import '../../models/vehicle.dart';
@@ -32,6 +35,9 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
 
   final TextEditingController _kmController = TextEditingController();
   List<InterventionTask> _tasks = [];
+  
+  final List<XFile> _selectedImages = [];
+  final ImagePicker _picker = ImagePicker();
 
   bool get _isEditing => widget.intervention != null;
 
@@ -52,12 +58,45 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
     }
   }
 
+  Future<void> _pickImages() async {
+    final List<XFile> images = await _picker.pickMultiImage();
+    if (images.isNotEmpty) {
+      setState(() {
+        _selectedImages.addAll(images);
+      });
+    }
+  }
+
+  void _removeImage(int index) {
+    setState(() {
+      _selectedImages.removeAt(index);
+    });
+  }
+
+  Future<List<String>> _uploadImages(String interventionId) async {
+    List<String> urls = [];
+    final storageRef = FirebaseStorage.instance.ref().child('interventions/$interventionId');
+
+    for (var image in _selectedImages) {
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${image.name}';
+      final fileRef = storageRef.child(fileName);
+      await fileRef.putFile(File(image.path));
+      final url = await fileRef.getDownloadURL();
+      urls.add(url);
+    }
+    return urls;
+  }
+
   void _pickDate() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime(2030),
+      selectableDayPredicate: (DateTime day) {
+        if (_selectedMecanicien == null) return true;
+        return _selectedMecanicien!.joursOuverture.contains(day.weekday);
+      },
     );
     if (picked != null) {
       setState(() {
@@ -190,10 +229,19 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
           ? DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, _selectedHeure!)
           : _selectedDate!;
 
+      final interventionId = widget.intervention?.id ?? FirebaseDatabase.instance.ref('interventions/$currentUserId').push().key ?? '';
+
+      List<String>? imageUrls;
+      if (_selectedImages.isNotEmpty) {
+        imageUrls = await _uploadImages(interventionId);
+      } else if (_isEditing) {
+        imageUrls = widget.intervention!.imageUrls;
+      }
+
       final intervention = Intervention(
-        id: widget.intervention?.id ?? '',
+        id: interventionId,
         date: finalDate,
-        heure: _selectedHeure != null ? '${_selectedHeure}h00' : '${finalDate.hour}h${finalDate.minute}',
+        heure: _selectedHeure != null ? '${_selectedHeure.toString().padLeft(2, '0')}:00' : '${finalDate.hour.toString().padLeft(2, '0')}:${finalDate.minute.toString().padLeft(2, '0')}',
         statutLabelDiagram: _isEditing ? widget.intervention!.statut.name : 'En attente',
         vehiculeId: _selectedVehicle?.id ?? widget.intervention?.vehiculeId ?? '',
         vehiculeNom: _selectedVehicle?.nomComplet ?? widget.intervention?.vehiculeNom ?? '',
@@ -204,6 +252,7 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
         mecanicienNom: _selectedMecanicien?.nom ?? widget.intervention?.mecanicienNom,
         mecanicienId: _selectedMecanicien?.id ?? widget.intervention?.mecanicienId,
         kilometrageCompteur: int.tryParse(_kmController.text) ?? _selectedVehicle?.kilometrageActuel,
+        imageUrls: imageUrls,
       );
 
       await InterventionService.addIntervention(intervention);
@@ -247,7 +296,6 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
                       stream: VehicleService.vehiclesStream(),
                       builder: (context, snapshot) {
                         final vehicles = snapshot.data ?? [];
-                        // Safety match for dropdown value
                         Vehicle? safeValue;
                         if (_selectedVehicle != null && vehicles.any((v) => v.id == _selectedVehicle!.id)) {
                           safeValue = vehicles.firstWhere((v) => v.id == _selectedVehicle!.id);
@@ -287,11 +335,6 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
                         final data = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
                         final list = data.entries.map((e) => Mecanicien.fromMap(e.key as String, e.value as Map)).toList();
                         
-                        // Handle pre-selected mechanic from other screens
-                        if (_selectedMecanicien != null && !list.any((m) => m.id == _selectedMecanicien!.id)) {
-                          list.add(_selectedMecanicien!);
-                        }
-
                         Mecanicien? safeMecValue;
                         if (_selectedMecanicien != null && list.any((m) => m.id == _selectedMecanicien!.id)) {
                           safeMecValue = list.firstWhere((m) => m.id == _selectedMecanicien!.id);
@@ -302,8 +345,11 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
                           hint: const Text('Choisir un mécanicien (Optionnel)'),
                           items: list.map((m) => DropdownMenuItem(value: m, child: Text('${m.nom} (${m.specialite})'))).toList(),
                           onChanged: (m) {
-                            setState(() => _selectedMecanicien = m);
-                            if (_selectedDate != null && m != null) _fetchSlots(_selectedDate!);
+                            setState(() {
+                              _selectedMecanicien = m;
+                              _selectedDate = null;
+                              _selectedHeure = null;
+                            });
                           },
                         );
                       },
@@ -334,6 +380,55 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
                         onPressed: () => _showTaskDialog(),
                         icon: const Icon(Icons.add),
                         label: const Text('Ajouter une demande'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              _buildSectionTitle('Photos (Optionnel)'),
+              _buildCard(
+                child: Column(
+                  children: [
+                    if (_selectedImages.isNotEmpty)
+                      SizedBox(
+                        height: 100,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _selectedImages.length,
+                          itemBuilder: (context, index) {
+                            return Stack(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.file(File(_selectedImages[index].path), width: 100, height: 100, fit: BoxFit.cover),
+                                  ),
+                                ),
+                                Positioned(
+                                  right: 4,
+                                  top: 0,
+                                  child: GestureDetector(
+                                    onTap: () => _removeImage(index),
+                                    child: Container(
+                                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                      child: const Icon(Icons.close, color: Colors.white, size: 20),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _pickImages,
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        label: const Text('Ajouter des photos'),
                       ),
                     ),
                   ],
@@ -391,23 +486,31 @@ class _InterventionFormScreenState extends State<InterventionFormScreen> {
 
   Widget _buildTimeSlots() {
     if (_isLoadingSlots) return const Center(child: CircularProgressIndicator());
-    final slots = List.generate(_selectedMecanicien!.heuresFin - _selectedMecanicien!.heuresDebut, (i) => _selectedMecanicien!.heuresDebut + i);
+    final slots = List.generate(_selectedMecanicien!.heuresFin - _selectedMecanicien!.heuresDebut + 1, (i) => _selectedMecanicien!.heuresDebut + i);
+    
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Wrap(
-        spacing: 8,
-        children: slots.map((h) {
-          final isOccupied = _occupes.contains(h);
-          final isSelected = _selectedHeure == h;
-          return ChoiceChip(
-            label: Text('${h}h00'),
-            selected: isSelected,
-            onSelected: isOccupied ? null : (val) => setState(() => _selectedHeure = val ? h : null),
-            disabledColor: Colors.grey.shade200,
-            selectedColor: const Color(0xFF1976D2),
-            labelStyle: TextStyle(color: isSelected ? Colors.white : (isOccupied ? Colors.grey : Colors.black)),
-          );
-        }).toList(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Heures disponibles :', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: slots.map((h) {
+              final isOccupied = _occupes.contains(h);
+              final isSelected = _selectedHeure == h;
+              return ChoiceChip(
+                label: Text('${h.toString().padLeft(2, '0')}:00'),
+                selected: isSelected,
+                onSelected: isOccupied ? null : (val) => setState(() => _selectedHeure = val ? h : null),
+                disabledColor: Colors.grey.shade200,
+                selectedColor: const Color(0xFF1976D2),
+                labelStyle: TextStyle(color: isSelected ? Colors.white : (isOccupied ? Colors.grey : Colors.black)),
+              );
+            }).toList(),
+          ),
+        ],
       ),
     );
   }

@@ -4,9 +4,12 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../models/intervention.dart';
+import '../../models/mecanicien.dart';
+import '../../models/vehicle.dart';
 import '../../services/intervention_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
+import '../../services/vehicle_service.dart';
 import '../login_screen.dart';
 import '../user/notifications_screen.dart';
 import '../user/profile_screen.dart';
@@ -26,6 +29,7 @@ class _MechanicDashboardState extends State<MechanicDashboard> {
   int _currentIndex = 0;
   String _activeFilter = 'Tous';
   bool _disponible = true; 
+  bool _checkedProfile = false;
   
   // Graph filters
   ChartDataType _chartDataType = ChartDataType.revenue;
@@ -65,9 +69,50 @@ class _MechanicDashboardState extends State<MechanicDashboard> {
         }
       });
       _startGps();
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkProfileCompletion();
+      });
     } else {
       _interventionsStream = const Stream.empty();
     }
+  }
+
+  void _checkProfileCompletion() async {
+    if (_uid == null || _checkedProfile) return;
+
+    final snapshot = await _mecaRef.get();
+    if (snapshot.exists) {
+      final data = snapshot.value as Map;
+      final meca = Mecanicien.fromMap(_uid!, data);
+      
+      // Check for empty fields
+      if (meca.nom.isEmpty || meca.telephone.isEmpty || meca.nomGarage.isEmpty || meca.adresseGarage.isEmpty) {
+        _showIncompleteProfileDialog();
+      }
+    }
+    _checkedProfile = true;
+  }
+
+  void _showIncompleteProfileDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Profil incomplet'),
+        content: const Text('Certaines informations de votre garage ne sont pas encore renseignées. Souhaitez-vous les completer maintenant ?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Plus tard')),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
+            },
+            child: const Text('Completer'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _startGps() async {
@@ -162,7 +207,7 @@ class _MechanicDashboardState extends State<MechanicDashboard> {
 
   Widget _buildBottomNav() {
     return Container(
-      decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, -5))]),
+      decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, -5))]),
       child: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
@@ -224,7 +269,7 @@ class _MechanicDashboardState extends State<MechanicDashboard> {
             decoration: BoxDecoration(
               color: _disponible ? const Color(0xFF10B981) : const Color(0xFFEF4444),
               borderRadius: BorderRadius.circular(20),
-              boxShadow: [BoxShadow(color: (_disponible ? Colors.green : Colors.red).withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4))],
+              boxShadow: [BoxShadow(color: (_disponible ? Colors.green : Colors.red).withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 4))],
             ),
             child: Row(
               children: [
@@ -259,7 +304,7 @@ class _MechanicDashboardState extends State<MechanicDashboard> {
   Widget _buildChartSection(List<Intervention> interventions) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20)]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -346,7 +391,7 @@ class _MechanicDashboardState extends State<MechanicDashboard> {
             barWidth: 3,
             isStrokeCapRound: true,
             dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(show: true, color: const Color(0xFF3B82F6).withValues(alpha: 0.1)),
+            belowBarData: BarAreaData(show: true, color: const Color(0xFF3B82F6).withOpacity(0.1)),
           ),
         ],
         minY: 0,
@@ -415,7 +460,7 @@ class _MechanicDashboardState extends State<MechanicDashboard> {
             const SizedBox(width: 16),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(i.vehiculeNom, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              Text(i.typeLabel, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+              Text('${DateFormat.Hm().format(i.date)} · ${i.typeLabel}', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
             ])),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text('${i.prixEstime.toInt()} DT', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
@@ -511,7 +556,7 @@ class _MechanicDashboardState extends State<MechanicDashboard> {
                 child: Container(
                   margin: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFF3B82F6) : (isToday ? const Color(0xFF3B82F6).withValues(alpha: 0.1) : Colors.transparent),
+                    color: isSelected ? const Color(0xFF3B82F6) : (isToday ? const Color(0xFF3B82F6).withOpacity(0.1) : Colors.transparent),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Center(child: Text('$day', style: TextStyle(fontWeight: isSelected || isToday ? FontWeight.bold : FontWeight.normal, color: isSelected ? Colors.white : (isToday ? const Color(0xFF3B82F6) : Colors.black87)))),
@@ -654,16 +699,16 @@ class _PremiumStatCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: colors.first.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: colors.first.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.8), size: 24),
+          Icon(icon, color: Colors.white.withOpacity(0.8), size: 24),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(value, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-            Text(title, style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 11, fontWeight: FontWeight.w500)),
+            Text(title, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11, fontWeight: FontWeight.w500)),
           ]),
         ],
       ),
@@ -683,7 +728,7 @@ class _AppointmentCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]),
         child: Column(
           children: [
             Padding(
@@ -724,7 +769,7 @@ class _StatusBadge extends StatelessWidget {
     if (statut == InterventionStatut.enCours) { c = Colors.orange; l = 'En cours'; }
     else if (statut == InterventionStatut.termine) { c = Colors.green; l = 'Terminé'; }
     else if (statut == InterventionStatut.enAttente) { c = Colors.red; l = 'Urgent'; }
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: c.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Text(l, style: TextStyle(color: c, fontSize: 10, fontWeight: FontWeight.bold)));
+    return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Text(l, style: TextStyle(color: c, fontSize: 10, fontWeight: FontWeight.bold)));
   }
 }
 
@@ -740,7 +785,7 @@ class _TypeBtn extends StatelessWidget {
       onTap: () => onTap(type),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        decoration: BoxDecoration(color: active ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(8), boxShadow: active ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 5)] : null),
+        decoration: BoxDecoration(color: active ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(8), boxShadow: active ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)] : null),
         child: Text(label, style: TextStyle(color: active ? const Color(0xFF1E293B) : const Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 11)),
       ),
     );
@@ -763,35 +808,106 @@ class _InterventionDetailPanel extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
       padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 24),
-          const Text('Détails de la mission', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          _detailRow(Icons.directions_car, 'Véhicule', intervention.vehiculeNom),
-          _detailRow(Icons.build, 'Type', intervention.typeLabel),
-          _detailRow(Icons.access_time, 'Heure', DateFormat.Hm().format(intervention.date)),
-          _detailRow(Icons.person, 'Client ID', intervention.userId),
-          if (intervention.tasks.isNotEmpty) ...[
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 24),
+            const Text('Détails de la mission', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            const Text('Tâches à effectuer :', style: TextStyle(fontWeight: FontWeight.bold)),
-            ...intervention.tasks.map((t) => Padding(padding: const EdgeInsets.only(top: 4), child: Text('• ${t.label}', style: const TextStyle(fontSize: 13, color: Colors.grey)))),
+            _detailRow(Icons.directions_car, 'Véhicule', intervention.vehiculeNom),
+            
+            // Fetch and show permanent vehicle photos
+            FutureBuilder<Vehicle?>(
+              future: VehicleService.getVehicle(intervention.userId, intervention.vehiculeId),
+              builder: (context, snapshot) {
+                if (snapshot.hasData && snapshot.data?.imageUrls != null && snapshot.data!.imageUrls.isNotEmpty) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 12),
+                      const Text('Photos du véhicule (Général) :', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 100,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: snapshot.data!.imageUrls.length,
+                          itemBuilder: (context, idx) => GestureDetector(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (_) => Dialog(child: Image.network(snapshot.data!.imageUrls[idx])),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.network(snapshot.data!.imageUrls[idx], width: 100, height: 100, fit: BoxFit.cover),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return const SizedBox();
+              }
+            ),
+
+            const SizedBox(height: 12),
+            _detailRow(Icons.build, 'Type', intervention.typeLabel),
+            _detailRow(Icons.access_time, 'Heure', DateFormat.Hm().format(intervention.date)),
+            _detailRow(Icons.person, 'Client ID', intervention.userId),
+            if (intervention.tasks.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text('Tâches à effectuer :', style: TextStyle(fontWeight: FontWeight.bold)),
+              ...intervention.tasks.map((t) => Padding(padding: const EdgeInsets.only(top: 4), child: Text('• ${t.label}', style: const TextStyle(fontSize: 13, color: Colors.grey)))),
+            ],
+            if (intervention.imageUrls != null && intervention.imageUrls!.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              const Text('Photos envoyées pour cette mission :', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 120,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: intervention.imageUrls!.length,
+                  itemBuilder: (context, idx) => GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => Dialog(child: Image.network(intervention.imageUrls![idx])),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(intervention.imageUrls![idx], width: 120, height: 120, fit: BoxFit.cover),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 32),
+            if (intervention.statut == InterventionStatut.enAttente)
+              Row(children: [
+                Expanded(child: OutlinedButton(onPressed: onCancel, style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Refuser'))),
+                const SizedBox(width: 16),
+                Expanded(child: ElevatedButton(onPressed: onAccept, style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Accepter'))),
+              ])
+            else if (intervention.statut == InterventionStatut.planifie)
+              SizedBox(width: double.infinity, child: ElevatedButton(onPressed: onStart, style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Commencer la mission')))
+            else if (intervention.statut == InterventionStatut.enCours)
+              SizedBox(width: double.infinity, child: ElevatedButton(onPressed: onFinish, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Terminer l\'intervention')))
           ],
-          const SizedBox(height: 32),
-          if (intervention.statut == InterventionStatut.enAttente)
-            Row(children: [
-              Expanded(child: OutlinedButton(onPressed: onCancel, style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Refuser'))),
-              const SizedBox(width: 16),
-              Expanded(child: ElevatedButton(onPressed: onAccept, style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Accepter'))),
-            ])
-          else if (intervention.statut == InterventionStatut.planifie)
-            SizedBox(width: double.infinity, child: ElevatedButton(onPressed: onStart, style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Commencer la mission')))
-          else if (intervention.statut == InterventionStatut.enCours)
-            SizedBox(width: double.infinity, child: ElevatedButton(onPressed: onFinish, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Terminer l\'intervention')))
-        ],
+        ),
       ),
     );
   }

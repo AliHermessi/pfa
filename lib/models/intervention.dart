@@ -4,8 +4,8 @@ enum InterventionType { piece, fluide, controle, autre }
 
 class InterventionTask {
   final InterventionType type;
-  final String? name; // Name of the part (required for PIECE, FLUIDE)
-  final String? description; // Optional for PIECE, FLUIDE, CONTROLE. Required for AUTRE (min 15 chars)
+  final String? name; 
+  final String? description; 
 
   InterventionTask({
     required this.type,
@@ -57,7 +57,8 @@ class Intervention {
   final String? mecanicienNom;
   final int? noteClient;
   final bool estPaye;
-  final int? kilometrageCompteur; // Added for predictive maintenance
+  final int? kilometrageCompteur;
+  final List<String>? imageUrls;
 
   Intervention({
     required this.id,
@@ -76,6 +77,7 @@ class Intervention {
     this.noteClient,
     this.estPaye = false,
     this.kilometrageCompteur,
+    this.imageUrls,
   });
 
   String get typeLabel {
@@ -111,6 +113,7 @@ class Intervention {
       'noteClient': noteClient,
       'estPaye': estPaye,
       if (kilometrageCompteur != null) 'kilometrageCompteur': kilometrageCompteur,
+      if (imageUrls != null) 'imageUrls': imageUrls,
     };
   }
 
@@ -128,10 +131,13 @@ class Intervention {
       dateObj = DateTime.now();
     }
 
+    final imageUrlsRaw = map['imageUrls'] as List?;
+    final List<String>? imageUrls = imageUrlsRaw?.map((e) => e.toString()).toList();
+
     return Intervention(
       id: id,
       date: dateObj,
-      heure: map['heure'] as String? ?? '${dateObj.hour}:${dateObj.minute}',
+      heure: map['heure'] as String? ?? '${dateObj.hour.toString().padLeft(2, '0')}:${dateObj.minute.toString().padLeft(2, '0')}',
       statutLabelDiagram: map['statutLabelDiagram'] as String? ?? '',
       vehiculeId: map['vehiculeId'] as String? ?? '',
       userId: map['userId'] as String? ?? '',
@@ -145,6 +151,7 @@ class Intervention {
       noteClient: (map['noteClient'] as num?)?.toInt(),
       estPaye: map['estPaye'] as bool? ?? false,
       kilometrageCompteur: (map['kilometrageCompteur'] as num?)?.toInt(),
+      imageUrls: imageUrls,
     );
   }
 }

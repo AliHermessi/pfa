@@ -173,10 +173,7 @@ class _VehicleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isWarning = vehicle.vidangeUrgente || vehicle.sante < 0.4;
-    final Color healthColor = vehicle.sante < 0.3 
-        ? Colors.red 
-        : (vehicle.sante < 0.6 ? Colors.orange : Colors.green);
+    final bool isWarning = vehicle.vidangeUrgente;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -242,26 +239,6 @@ class _VehicleCard extends StatelessWidget {
                         'Vidange',
                         color: vehicle.vidangeUrgente ? Colors.red : Colors.black87
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      const Text('Santé', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: LinearProgressIndicator(
-                            value: vehicle.sante,
-                            minHeight: 6,
-                            backgroundColor: Colors.grey.shade200,
-                            valueColor: AlwaysStoppedAnimation<Color>(healthColor),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text('${(vehicle.sante * 100).toInt()}%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: healthColor)),
                     ],
                   ),
                 ],

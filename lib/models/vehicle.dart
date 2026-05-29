@@ -1,3 +1,5 @@
+import 'mileage_entry.dart';
+
 class Vehicle {
   final String id;
   // Diagram fields
@@ -15,6 +17,12 @@ class Vehicle {
   // New fields for reminders
   final DateTime dernierMiseAJourKm;
   final int rappelKmJours; // Number of days before reminding to update mileage
+  
+  // History of mileage for better prediction
+  final List<MileageEntry> mileageHistory;
+
+  // New field for vehicle images (max 3)
+  final List<String> imageUrls;
 
   Vehicle({
     required this.id,
@@ -27,7 +35,9 @@ class Vehicle {
     required this.sante,
     required this.clientId,
     required this.dernierMiseAJourKm,
-    this.rappelKmJours = 7, // Default to 7 days
+    this.rappelKmJours = 7,
+    this.mileageHistory = const [],
+    this.imageUrls = const [],
   });
 
   String get nomComplet => '$marque $modele';
@@ -54,10 +64,33 @@ class Vehicle {
       'clientId': clientId,
       'dernierMiseAJourKm': dernierMiseAJourKm.millisecondsSinceEpoch,
       'rappelKmJours': rappelKmJours,
+      'mileageHistory': mileageHistory.map((e) => e.toMap()).toList(),
+      'imageUrls': imageUrls,
     };
   }
 
   factory Vehicle.fromMap(String id, Map<dynamic, dynamic> map) {
+    var history = <MileageEntry>[];
+    if (map['mileageHistory'] != null) {
+      final historyMap = map['mileageHistory'] as Map? ?? {};
+      if (map['mileageHistory'] is List) {
+        history = (map['mileageHistory'] as List)
+            .where((e) => e != null)
+            .map((e) => MileageEntry.fromMap(e as Map))
+            .toList();
+      } else {
+        history = historyMap.values
+            .map((e) => MileageEntry.fromMap(e as Map))
+            .toList();
+      }
+    }
+
+    final imageUrlsRaw = map['imageUrls'];
+    List<String> imageUrls = [];
+    if (imageUrlsRaw is List) {
+      imageUrls = List<String>.from(imageUrlsRaw);
+    }
+
     return Vehicle(
       id: id,
       marque: map['marque'] as String? ?? '',
@@ -74,6 +107,8 @@ class Vehicle {
         (map['dernierMiseAJourKm'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
       ),
       rappelKmJours: (map['rappelKmJours'] as num?)?.toInt() ?? 7,
+      mileageHistory: history,
+      imageUrls: imageUrls,
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
 import 'screens/user/user_dashboard_screen.dart';
@@ -12,6 +13,13 @@ import 'services/background_mileage_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Load environment variables
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint("Dotenv load error: $e");
+  }
   
   // Initialize date formatting for French locales
   try {

@@ -1,12 +1,12 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/vehicle.dart';
 import '../../models/carnet_entretien.dart';
 import '../../services/vehicle_service.dart';
-import '../../services/notification_service.dart';
 import '../../services/carnet_service.dart';
-import '../../models/app_notification.dart';
 import 'add_vehicle_screen.dart';
+import 'ai_diagnostic_screen.dart';
 
 class VehicleDetailsScreen extends StatefulWidget {
   final Vehicle vehicle;
@@ -27,25 +27,20 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
   }
 
   Future<void> _updateMileage(int newMileage) async {
-    final updatedVehicle = Vehicle(
-      id: _vehicle.id,
-      marque: _vehicle.marque,
-      modele: _vehicle.modele,
-      immatriculation: _vehicle.immatriculation,
-      kilometrageActuel: newMileage,
-      kilometrageProchVidange: _vehicle.kilometrageProchVidange,
-      prochainControle: _vehicle.prochainControle,
-      sante: _vehicle.sante, // We don't update sante directly anymore, it's calculated from carnet
-      clientId: _vehicle.clientId,
-      dernierMiseAJourKm: DateTime.now(),
-      rappelKmJours: _vehicle.rappelKmJours,
-    );
+    if (newMileage == _vehicle.kilometrageActuel) return;
 
     try {
-      await VehicleService.updateVehicle(updatedVehicle);
-      setState(() {
-        _vehicle = updatedVehicle;
-      });
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      await VehicleService.updateVehicleMileage(uid, _vehicle.id, newMileage);
+      
+      final updated = await VehicleService.getVehicle(uid, _vehicle.id);
+      if (updated != null && mounted) {
+        setState(() {
+          _vehicle = updated;
+        });
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -106,7 +101,15 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit, color: Colors.white),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddVehicleScreen(vehicle: _vehicle))),
+            onPressed: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => AddVehicleScreen(vehicle: _vehicle)));
+              // Refresh after edit
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid != null) {
+                final updated = await VehicleService.getVehicle(uid, _vehicle.id);
+                if (updated != null && mounted) setState(() => _vehicle = updated);
+              }
+            },
           ),
         ],
       ),
@@ -114,7 +117,6 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
         stream: CarnetService.vehicleCarnetStream(_vehicle.id),
         builder: (context, snapshot) {
           final entries = snapshot.data ?? [];
-          final health = CarnetService.calculateHealth(_vehicle, entries);
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -122,8 +124,9 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildMainInfoCard(),
+                if (_vehicle.imageUrls.isNotEmpty) _buildImageSection(),
                 const SizedBox(height: 16),
-                _buildMaintenanceStatus(health),
+                _buildAIDiagnosticCard(),
                 const SizedBox(height: 16),
                 _buildLastEntries(entries),
               ],
@@ -176,43 +179,86 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     );
   }
 
-  Widget _buildMaintenanceStatus(double? health) {
-    final bool isComplete = health != null;
-    final displayHealth = health ?? 0.0;
-
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Statut de maintenance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Santé Générale'),
-                if (isComplete)
-                  Text('${(displayHealth * 100).toInt()}%', style: TextStyle(fontWeight: FontWeight.bold, color: displayHealth < 0.5 ? Colors.orange : Colors.green))
-                else
-                  const Text('Incomplet', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (isComplete)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: displayHealth,
-                  minHeight: 8,
-                  backgroundColor: Colors.grey.shade200,
-                  valueColor: AlwaysStoppedAnimation<Color>(displayHealth < 0.5 ? Colors.orange : Colors.green),
+  Widget _buildImageSection() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Photos du véhicule', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 120,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _vehicle.imageUrls.length,
+              itemBuilder: (context, index) => GestureDetector(
+                onTap: () => showDialog(context: context, builder: (_) => Dialog(child: Image.network(_vehicle.imageUrls[index]))),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 12),
+                  width: 160,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    image: DecorationImage(image: NetworkImage(_vehicle.imageUrls[index]), fit: BoxFit.cover),
+                  ),
                 ),
-              )
-            else
-              const Text('Renseignez au moins 4 composants pour voir votre score santé.', style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic)),
-          ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAIDiagnosticCard() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.blue.shade100, width: 1.5),
+      ),
+      color: Colors.blue.shade50.withOpacity(0.5),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AIDiagnosticScreen(vehicle: _vehicle),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.auto_awesome, color: Color(0xFF1976D2), size: 24),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Diagnostic Santé IA',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1976D2)),
+                    ),
+                    Text(
+                      'Analyse complète (Historique + Photos)',
+                      style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Color(0xFF1976D2)),
+            ],
+          ),
         ),
       ),
     );

@@ -38,8 +38,28 @@ class VehicleService {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) throw Exception('Utilisateur non connecté');
     
-    final ref = _db.child('vehicles/$uid').push();
-    await ref.set(vehicle.toMap());
+    // If vehicle.id is empty, generate a new key, otherwise use the one provided
+    final ref = vehicle.id.isEmpty 
+        ? _db.child('vehicles/$uid').push()
+        : _db.child('vehicles/$uid/${vehicle.id}');
+    
+    final data = vehicle.toMap();
+    if (vehicle.id.isEmpty) {
+       data['id'] = ref.key;
+    }
+    
+    // Initialize history with starting mileage if > 0
+    if (vehicle.kilometrageActuel > 0) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      data['mileageHistory'] = {
+        'initial': {
+          'date': now,
+          'kilometrage': vehicle.kilometrageActuel,
+        }
+      };
+    }
+    
+    await ref.set(data);
     return ref.key!;
   }
 
@@ -47,15 +67,42 @@ class VehicleService {
   static Future<void> updateVehicle(Vehicle vehicle) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) throw Exception('Utilisateur non connecté');
-    await _db.child('vehicles/$uid/${vehicle.id}').update(vehicle.toMap());
+    
+    // Check if mileage changed to update history
+    final oldVehicle = await getVehicle(uid, vehicle.id);
+    if (oldVehicle != null && oldVehicle.kilometrageActuel != vehicle.kilometrageActuel) {
+      await updateVehicleMileage(uid, vehicle.id, vehicle.kilometrageActuel);
+    }
+
+    final data = vehicle.toMap();
+    data.remove('mileageHistory'); // Managed separately
+    
+    await _db.child('vehicles/$uid/${vehicle.id}').update(data);
   }
 
   // ── Mettre à jour le kilométrage uniquement ──────────────────────────────
   static Future<void> updateVehicleMileage(String userId, String vehicleId, int newKm) async {
-    await _db.child('vehicles/$userId/$vehicleId').update({
-      'kilometrageActuel': newKm,
-      'dernierMiseAJourKm': DateTime.now().millisecondsSinceEpoch,
-    });
+    final ref = _db.child('vehicles/$userId/$vehicleId');
+    final snapshot = await ref.get();
+    
+    if (snapshot.exists) {
+      final data = snapshot.value as Map;
+      final currentKm = (data['kilometrageActuel'] as num?)?.toInt() ?? 0;
+      
+      if (newKm > currentKm) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        
+        await ref.update({
+          'kilometrageActuel': newKm,
+          'dernierMiseAJourKm': now,
+        });
+
+        await ref.child('mileageHistory').push().set({
+          'date': now,
+          'kilometrage': newKm,
+        });
+      }
+    }
   }
 
   // ── Supprimer un véhicule ─────────────────────────────────────────────────

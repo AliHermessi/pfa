@@ -1,5 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../models/vehicle.dart';
 import '../../models/composant.dart';
@@ -54,6 +58,11 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   bool _loadingComposants = false;
   bool _isLoading = false;
 
+  // Image handling
+  final List<XFile> _selectedImages = [];
+  List<String> _existingImageUrls = [];
+  final ImagePicker _picker = ImagePicker();
+
   bool get _isEditing => widget.vehicle != null;
 
   @override
@@ -66,30 +75,68 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     _kmCtrl = TextEditingController(text: v?.kilometrageActuel.toString() ?? '');
     _kmVidangeCtrl = TextEditingController();
     _prochainControle = (v != null && v.prochainControle.year > 2000) ? v.prochainControle : null;
+    _existingImageUrls = v?.imageUrls != null ? List<String>.from(v!.imageUrls) : [];
     _initializeMaintenanceEntries();
   }
 
   Future<void> _initializeMaintenanceEntries() async {
     setState(() => _loadingComposants = true);
     try {
-      final list = await ComposantService.allComposantsStream().first;
-      setState(() {
-        final List<Composant> baseComps = list.isNotEmpty ? list : [
-          Composant(id: 'c1', nom: 'Pneus', seuilKilometrageMax: 40000),
-          Composant(id: 'c2', nom: 'Plaquettes de frein', seuilKilometrageMax: 30000),
-          Composant(id: 'c3', nom: 'Batterie', seuilKilometrageMax: 60000),
-          Composant(id: 'c4', nom: 'Filtre à air', seuilKilometrageMax: 20000),
-        ];
+      final allComps = await ComposantService.allComposantsStream().first;
+      
+      List<CarnetEntretien> existingEntries = [];
+      if (_isEditing) {
+        existingEntries = await CarnetService.vehicleCarnetStream(widget.vehicle!.id).first;
+      }
 
-        // Remove CONTROLE category
-        _maintenanceEntries = baseComps
-          .where((c) => c.categorie != 'CONTROLE')
-          .map((c) => _MaintenanceEntry(
-            label: c.nom,
-            composantId: c.id,
-            category: c.categorie,
-          )).toList();
+      setState(() {
+        // Standard components
+        _maintenanceEntries = allComps
+          .where((c) => c.categorie != 'CONTROLE' && c.id != 'oil_change')
+          .map((c) {
+            final existing = existingEntries.cast<CarnetEntretien?>().firstWhere(
+              (e) => e?.composantId == c.id, 
+              orElse: () => null
+            );
+
+            return _MaintenanceEntry(
+              label: c.nom,
+              composantId: c.id,
+              category: c.categorie,
+              km: existing?.dernierKilometrageChangement,
+              date: existing?.dateChangement,
+              isNeverReplaced: existing?.dateChangement.year == 2000,
+            );
+          }).toList();
         
+        // Custom entries
+        for (var e in existingEntries) {
+          if (e.composantId != 'oil_change' && !allComps.any((c) => c.id == e.composantId)) {
+            _maintenanceEntries.add(_MaintenanceEntry(
+              label: e.nomComposantCustom ?? 'Entretien',
+              composantId: e.composantId,
+              category: e.categorie,
+              km: e.dernierKilometrageChangement,
+              date: e.dateChangement,
+              isCustom: true,
+              isNeverReplaced: e.dateChangement.year == 2000,
+            ));
+          }
+        }
+        
+        // Oil change
+        final oilEntry = existingEntries.cast<CarnetEntretien?>().firstWhere(
+          (e) => e?.composantId == 'oil_change',
+          orElse: () => null
+        );
+        if (oilEntry != null) {
+          _vidangeNeverDone = oilEntry.dateChangement.year == 2000;
+          if (!_vidangeNeverDone) {
+            _kmVidangeCtrl.text = oilEntry.dernierKilometrageChangement.toString();
+            _dateVidange = oilEntry.dateChangement;
+          }
+        }
+
         _loadingComposants = false;
       });
     } catch (e) {
@@ -105,6 +152,36 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     _kmCtrl.dispose();
     _kmVidangeCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    if (_selectedImages.length + _existingImageUrls.length >= 3) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Maximum 3 photos autorisées')));
+      return;
+    }
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (image != null) {
+      setState(() => _selectedImages.add(image));
+    }
+  }
+
+  void _removeNewImage(int index) => setState(() => _selectedImages.removeAt(index));
+  void _removeExistingImage(int index) => setState(() => _existingImageUrls.removeAt(index));
+
+  Future<List<String>> _uploadImages(String vehicleId) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return _existingImageUrls;
+
+    // Parallel upload
+    final newUrls = await Future.wait(_selectedImages.map((xf) async {
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('vehicles/$uid/$vehicleId/${DateTime.now().millisecondsSinceEpoch}_${xf.name}');
+      await ref.putFile(File(xf.path));
+      return await ref.getDownloadURL();
+    }));
+
+    return [..._existingImageUrls, ...newUrls];
   }
 
   void _showEntryDialog({_MaintenanceEntry? existingEntry, bool isNew = false}) {
@@ -240,8 +317,12 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         nextVidangeKm = _isEditing ? widget.vehicle!.kilometrageProchVidange : kmActuel + 100000;
       }
 
+      String vehicleId = _isEditing ? widget.vehicle!.id : FirebaseDatabase.instance.ref('vehicles/$uid').push().key!;
+
+      final List<String> imageUrls = await _uploadImages(vehicleId);
+
       final vehicle = Vehicle(
-        id: widget.vehicle?.id ?? '',
+        id: vehicleId,
         marque: _marqueCtrl.text.trim(),
         modele: _modeleCtrl.text.trim(),
         immatriculation: _immaCtrl.text.trim().toUpperCase(),
@@ -252,10 +333,15 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         clientId: uid,
         dernierMiseAJourKm: DateTime.now(),
         rappelKmJours: widget.vehicle?.rappelKmJours ?? 7,
+        mileageHistory: widget.vehicle?.mileageHistory ?? [],
+        imageUrls: imageUrls,
       );
 
-      String vehicleId = _isEditing ? vehicle.id : await VehicleService.addVehicle(vehicle);
-      if (_isEditing) await VehicleService.updateVehicle(vehicle);
+      if (_isEditing) {
+        await VehicleService.updateVehicle(vehicle);
+      } else {
+        await VehicleService.addVehicle(vehicle);
+      }
 
       if (vidangeKm != null || _vidangeNeverDone) {
         await CarnetService.updateEntry(CarnetEntretien(
@@ -354,7 +440,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   _buildField('Immatriculation', 'Ex: TUN 142 B', _immaCtrl, required: false),
                   const SizedBox(height: 14),
                   _buildField('Kilométrage actuel *', 'Ex: 87000', _kmCtrl, keyboardType: TextInputType.number),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
+                  _buildPhotoSection(),
+                  const SizedBox(height: 16),
                   _buildVidangeSection(),
                 ],
               ),
@@ -369,7 +457,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                 const Text('Maintenance des composants', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 4),
                 const Text(
-                  'Optionnel : Cliquez sur un élément pour renseigner sa dernière maintenance.\nPlus vous donnez d\'informations, plus nous pourrons vous aider.',
+                  'Optionnel : Cliquez sur un élément pour renseigner sa dernière maintenance.',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
@@ -389,6 +477,62 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   ),
                 ],
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Photos du véhicule (Max 3)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              ..._existingImageUrls.asMap().entries.map((e) => _buildThumbnail(url: e.value, onRemove: () => _removeExistingImage(e.key))),
+              ..._selectedImages.asMap().entries.map((e) => _buildThumbnail(file: File(e.value.path), onRemove: () => _removeNewImage(e.key))),
+              if (_existingImageUrls.length + _selectedImages.length < 3)
+                GestureDetector(
+                  onTap: _pickImage,
+                  child: Container(
+                    width: 80, height: 80,
+                    decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
+                    child: const Icon(Icons.add_a_photo, color: Colors.grey),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildThumbnail({String? url, File? file, required VoidCallback onRemove}) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      width: 80, height: 80,
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: url != null 
+              ? Image.network(url, fit: BoxFit.cover, width: 80, height: 80)
+              : Image.file(file!, fit: BoxFit.cover, width: 80, height: 80),
+          ),
+          Positioned(
+            right: 0, top: 0,
+            child: GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                child: const Icon(Icons.close, size: 14, color: Colors.white),
+              ),
             ),
           ),
         ],

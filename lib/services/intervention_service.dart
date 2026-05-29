@@ -56,7 +56,11 @@ class InterventionService {
     final userUid = FirebaseAuth.instance.currentUser?.uid;
     if (userUid == null) throw Exception('Utilisateur non connecté');
 
-    final interventionRef = _db.child('interventions/$userUid').push();
+    // Use provided ID if available (useful for pre-uploading images), otherwise push new
+    final interventionRef = intervention.id.isNotEmpty 
+        ? _db.child('interventions/$userUid/${intervention.id}')
+        : _db.child('interventions/$userUid').push();
+
     final String interventionId = interventionRef.key!;
 
     final data = intervention.toMap();

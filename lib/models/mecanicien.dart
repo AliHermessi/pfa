@@ -6,15 +6,21 @@ class Mecanicien extends Utilisateur {
   final String adresseGarage;
   final String statutCompte; // e.g., 'actif', 'en_attente'
 
-  // Extra Features kept from original code
+  // Extra Features
   final String specialite;
   final double note;
   final int nombreAvis;
   final double distanceKm;
   final bool disponible;
   final bool isApproved;
-  final int heuresDebut;
-  final int heuresFin;
+  
+  // Opening hours and days
+  final int heuresDebut; // e.g., 8
+  final int minutesDebut; // e.g., 0
+  final int heuresFin;   // e.g., 18
+  final int minutesFin;   // e.g., 0
+  final List<int> joursOuverture; // 1=Mon, 7=Sun. Default [1,2,3,4,5]
+
   final double? latitude;
   final double? longitude;
   final DateTime? lastSeen;
@@ -37,7 +43,10 @@ class Mecanicien extends Utilisateur {
     this.isApproved = false,
     super.role = 'mecanicien',
     this.heuresDebut = 8,
+    this.minutesDebut = 0,
     this.heuresFin = 18,
+    this.minutesFin = 0,
+    this.joursOuverture = const [1, 2, 3, 4, 5],
     this.latitude,
     this.longitude,
     this.lastSeen,
@@ -70,7 +79,10 @@ class Mecanicien extends Utilisateur {
       'disponible': disponible,
       'isApproved': isApproved,
       'heuresDebut': heuresDebut,
+      'minutesDebut': minutesDebut,
       'heuresFin': heuresFin,
+      'minutesFin': minutesFin,
+      'joursOuverture': joursOuverture,
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
       if (lastSeen != null) 'lastSeen': lastSeen!.millisecondsSinceEpoch,
@@ -96,7 +108,10 @@ class Mecanicien extends Utilisateur {
       disponible: map['disponible'] as bool? ?? true,
       isApproved: map['isApproved'] as bool? ?? false,
       heuresDebut: (map['heuresDebut'] as num?)?.toInt() ?? 8,
+      minutesDebut: (map['minutesDebut'] as num?)?.toInt() ?? 0,
       heuresFin: (map['heuresFin'] as num?)?.toInt() ?? 18,
+      minutesFin: (map['minutesFin'] as num?)?.toInt() ?? 0,
+      joursOuverture: (map['joursOuverture'] as List?)?.map((e) => (e as num).toInt()).toList() ?? [1, 2, 3, 4, 5],
       latitude: (map['latitude'] as num?)?.toDouble(),
       longitude: (map['longitude'] as num?)?.toDouble(),
       lastSeen: map['lastSeen'] != null

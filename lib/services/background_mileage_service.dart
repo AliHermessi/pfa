@@ -84,8 +84,6 @@ class BackgroundMileageService {
               ongoing: true,
               icon: '@mipmap/ic_launcher',
               onlyAlertOnce: true,
-              // Note: Action buttons in notifications usually require a broadcast receiver
-              // For simplicity, we keep the notification non-swipable as requested.
             ),
           ),
         );
@@ -98,7 +96,6 @@ class BackgroundMileageService {
       totalDistance = 0.0;
       lastPosition = null;
       
-      // Start location stream
       positionStream?.cancel();
       positionStream = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
@@ -114,11 +111,10 @@ class BackgroundMileageService {
             position.longitude,
           );
           
-          if (distance > 2) { // 2m filter for jitter
+          if (distance > 2) {
             totalDistance += distance;
             updateNotification(totalDistance);
             
-            // Periodically sync every 1km while driving
             if (totalDistance >= 1000 && userId != null && vehicleId != null) {
               _updateFirebaseMileage(userId!, vehicleId!, 1000);
               totalDistance -= 1000;
@@ -147,13 +143,20 @@ class BackgroundMileageService {
         int currentKm = (data['kilometrageActuel'] as num).toInt();
         int kmToAdd = (distanceInMeters / 1000).floor();
         
-        // We track fractional km in distanceInMeters, but update the integer km in DB
-        // If we want to be precise, we could store km as double in DB. 
-        // For now, let's just add the floor and wait for next full km.
         if (kmToAdd > 0) {
+          final newKm = currentKm + kmToAdd;
+          final now = DateTime.now().millisecondsSinceEpoch;
+          
+          // Update current stats
           await ref.update({
-            'kilometrageActuel': currentKm + kmToAdd,
-            'dernierMiseAJourKm': DateTime.now().millisecondsSinceEpoch,
+            'kilometrageActuel': newKm,
+            'dernierMiseAJourKm': now,
+          });
+
+          // Add to history for prediction
+          await ref.child('mileageHistory').push().set({
+            'date': now,
+            'kilometrage': newKm,
           });
         }
       }

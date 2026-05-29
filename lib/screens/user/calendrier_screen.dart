@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../models/intervention.dart';
 import '../../models/vehicle.dart';
 import '../../services/intervention_service.dart';
@@ -23,6 +24,7 @@ class _CalendrierEvent {
   final String subtitle;
   final Color color;
   final IconData icon;
+  final bool isIntervention;
 
   const _CalendrierEvent({
     required this.date,
@@ -30,6 +32,7 @@ class _CalendrierEvent {
     required this.subtitle,
     required this.color,
     required this.icon,
+    this.isIntervention = false,
   });
 }
 
@@ -102,6 +105,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
           subtitle: 'Rappel pour le contrôle technique',
           color: const Color(0xFF1976D2),
           icon: Icons.fact_check_outlined,
+          isIntervention: false,
         ));
       }
     }
@@ -127,6 +131,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
         subtitle: desc,
         color: c,
         icon: _getInterventionIcon(task),
+        isIntervention: true,
       ));
     }
 
@@ -360,7 +365,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                             children: [
                               Text(
                                 _selectedDay != null
-                                    ? 'Événements du ${_selectedDay!.day}/${_selectedDay!.month}'
+                                    ? 'Événements du ${DateFormat('dd/MM/yyyy').format(_selectedDay!)}'
                                     : 'Événements du mois',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold,
@@ -415,9 +420,22 @@ class _EventCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(event.title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 13)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(event.title,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                    if (event.isIntervention)
+                      Text(DateFormat.Hm().format(event.date),
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: event.color)),
+                  ],
+                ),
                 const SizedBox(height: 2),
                 Text(event.subtitle,
                     style: const TextStyle(fontSize: 11, color: Colors.grey)),
