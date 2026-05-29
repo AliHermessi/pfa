@@ -7,6 +7,7 @@ import 'add_vehicle_screen.dart';
 import 'historique_screen.dart';
 import 'calendrier_screen.dart';
 import 'mecaniciens_screen.dart';
+import 'vehicle_details_screen.dart';
 
 class VehiclesScreen extends StatefulWidget {
   const VehiclesScreen({super.key});
@@ -71,6 +72,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1976D2),
+        elevation: 0,
         automaticallyImplyLeading: false,
         title: const Text(
           'Mes Véhicules',
@@ -86,37 +88,39 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       body: StreamBuilder<List<Vehicle>>(
         stream: VehicleService.vehiclesStream(),
         builder: (context, snapshot) {
-          // ── Chargement ─────────────────────────────────────────────────
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // ── Erreur ─────────────────────────────────────────────────────
           if (snapshot.hasError) {
             return Center(child: Text('Erreur : ${snapshot.error}'));
           }
 
           final vehicles = snapshot.data ?? [];
 
-          // ── Aucun véhicule ─────────────────────────────────────────────
           if (vehicles.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.directions_car_outlined,
-                      size: 64, color: Colors.grey),
-                  SizedBox(height: 12),
-                  Text('Aucun véhicule ajouté',
-                      style: TextStyle(color: Colors.grey)),
+                      size: 80, color: Colors.grey.shade300),
+                  const SizedBox(height: 16),
+                  Text('Aucun véhicule enregistré',
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: _navigateToAdd,
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1976D2)),
+                    child: const Text('Ajouter mon premier véhicule', style: TextStyle(color: Colors.white)),
+                  )
                 ],
               ),
             );
           }
 
-          // ── Liste des véhicules ────────────────────────────────────────
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
             itemCount: vehicles.length,
             itemBuilder: (_, i) => _VehicleCard(
               vehicle: vehicles[i],
@@ -126,6 +130,14 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (_) => AddVehicleScreen(vehicle: vehicles[i]),
+                  ),
+                );
+              },
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => VehicleDetailsScreen(vehicle: vehicles[i]),
                   ),
                 );
               },
@@ -146,200 +158,134 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   }
 }
 
-// ── Vehicle Card ─────────────────────────────────────────────────────────────
-
 class _VehicleCard extends StatelessWidget {
   final Vehicle vehicle;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
+  final VoidCallback onTap;
 
   const _VehicleCard({
     required this.vehicle,
     required this.onDelete,
     required this.onEdit,
+    required this.onTap,
   });
-
-  String _capitalize(String text) {
-    if (text.isEmpty) return '';
-    return text.split(' ').map((word) {
-      if (word.isEmpty) return '';
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join(' ');
-  }
 
   @override
   Widget build(BuildContext context) {
-    final bool isWarning = vehicle.vidangeUrgente || vehicle.sante < 0.5;
-    final Color headerColor =
-        isWarning ? const Color(0xFFE65100) : const Color(0xFF1976D2);
+    final bool isWarning = vehicle.vidangeUrgente || vehicle.sante < 0.4;
+    final Color healthColor = vehicle.sante < 0.3 
+        ? Colors.red 
+        : (vehicle.sante < 0.6 ? Colors.orange : Colors.green);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
-        ],
-      ),
-      child: Column(
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: headerColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(12)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _capitalize(vehicle.nomComplet),
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15),
-                ),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        vehicle.immatriculation.toUpperCase(),
-                        style: TextStyle(
-                            color: headerColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert, color: Colors.white),
-                      onSelected: (v) {
-                        if (v == 'edit') onEdit();
-                        if (v == 'delete') onDelete();
-                      },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'edit', child: Text('Modifier')),
-                        PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Supprimer',
-                                style: TextStyle(color: Colors.red))),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Body
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              children: [
-                _InfoRow(
-                  icon: Icons.speed_outlined,
-                  label: 'Kilométrage',
-                  value:
-                      '${vehicle.kilometrage.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ')} km',
-                ),
-                const SizedBox(height: 8),
-                _InfoRow(
-                  icon: Icons.oil_barrel_outlined,
-                  label: 'Prochaine vidange',
-                  value: vehicle.vidangeUrgente
-                      ? '${vehicle.kmAvantVidange.abs()} km dépassé !'
-                      : '+ ${vehicle.kmAvantVidange} km',
-                  valueColor: vehicle.vidangeUrgente
-                      ? const Color(0xFFE65100)
-                      : const Color(0xFF2E7D32),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Row(
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isWarning ? Colors.orange.shade50 : Colors.blue.shade50,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: isWarning ? Colors.orange : const Color(0xFF1976D2),
+                    child: const Icon(Icons.directions_car, color: Colors.white),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.healing_outlined, size: 16, color: Colors.grey),
-                        const SizedBox(width: 8),
-                        Text('Santé générale',
-                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        Text(
+                          '${vehicle.marque} ${vehicle.modele}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        Text(
+                          vehicle.immatriculation.toUpperCase(),
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                        ),
                       ],
-                    ),
-                    Text(
-                      '${(vehicle.sante * 100).toInt()}%',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: vehicle.sante < 0.5
-                              ? const Color(0xFFE65100)
-                              : const Color(0xFF1976D2)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: vehicle.sante,
-                    minHeight: 6,
-                    backgroundColor: Colors.grey.shade200,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      vehicle.sante < 0.5
-                          ? const Color(0xFFE65100)
-                          : const Color(0xFF1976D2),
                     ),
                   ),
-                ),
-              ],
+                  PopupMenuButton<String>(
+                    onSelected: (v) {
+                      if (v == 'edit') onEdit();
+                      if (v == 'delete') onDelete();
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text('Modifier')])),
+                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, size: 18, color: Colors.red), SizedBox(width: 8), Text('Supprimer', style: TextStyle(color: Colors.red))])),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildMiniInfo(Icons.speed, '${vehicle.kilometrageActuel} km', 'Kilométrage'),
+                      _buildMiniInfo(
+                        Icons.oil_barrel, 
+                        vehicle.vidangeUrgente ? 'Urgent' : '${vehicle.kmAvantVidange} km', 
+                        'Vidange',
+                        color: vehicle.vidangeUrgente ? Colors.red : Colors.black87
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Text('Santé', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: LinearProgressIndicator(
+                            value: vehicle.sante,
+                            minHeight: 6,
+                            backgroundColor: Colors.grey.shade200,
+                            valueColor: AlwaysStoppedAnimation<Color>(healthColor),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('${(vehicle.sante * 100).toInt()}%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: healthColor)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
-}
 
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _InfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildMiniInfo(IconData icon, String value, String label, {Color color = Colors.black87}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(icon, size: 16, color: Colors.grey.shade600),
-            const SizedBox(width: 8),
-            Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+            Icon(icon, size: 14, color: Colors.grey),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
           ],
         ),
-        Text(value,
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: valueColor ?? Colors.black87)),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: color)),
       ],
     );
   }

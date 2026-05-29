@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'user_profile_screen.dart';
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
@@ -130,79 +131,87 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                   final user = usersList[index];
                   final isAdmin = user['role'] == 'admin';
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
-                      border: Border.all(color: Colors.grey.shade100),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: isAdmin ? [Colors.purple.shade400, Colors.purple.shade600] : [Colors.indigo.shade300, Colors.indigo.shade500],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(color: (isAdmin ? Colors.purple : Colors.indigo).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3)),
-                              ],
-                            ),
-                            child: Icon(
-                              isAdmin ? Icons.admin_panel_settings_rounded : Icons.person_rounded,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(user['nom'].toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1E293B))),
-                                    if (isAdmin) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.purple.shade200)),
-                                        child: const Text('Admin', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple)),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Icon(Icons.email_outlined, size: 14, color: Colors.grey.shade500),
-                                    const SizedBox(width: 4),
-                                    Expanded(child: Text(user['email'].toString(), style: TextStyle(fontSize: 13, color: Colors.grey.shade600))),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (!isAdmin)
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => UserProfileScreen(user: user)),
+                      );
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+                        border: Border.all(color: Colors.grey.shade100),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Row(
+                          children: [
                             Container(
+                              width: 50,
+                              height: 50,
                               decoration: BoxDecoration(
-                                color: Colors.red.shade50,
-                                borderRadius: BorderRadius.circular(12),
+                                gradient: LinearGradient(
+                                  colors: isAdmin ? [Colors.purple.shade400, Colors.purple.shade600] : [Colors.indigo.shade300, Colors.indigo.shade500],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(color: (isAdmin ? Colors.purple : Colors.indigo).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3)),
+                                ],
                               ),
-                              child: IconButton(
-                                icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade400),
-                                onPressed: () => _deleteUser(user['id'].toString(), user['nom'].toString()),
-                                tooltip: 'Supprimer',
+                              child: Icon(
+                                isAdmin ? Icons.admin_panel_settings_rounded : Icons.person_rounded,
+                                color: Colors.white,
                               ),
                             ),
-                        ],
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(user['nom'].toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1E293B))),
+                                      if (isAdmin) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.purple.shade200)),
+                                          child: const Text('Admin', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple)),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Icon(Icons.email_outlined, size: 14, color: Colors.grey.shade500),
+                                      const SizedBox(width: 4),
+                                      Expanded(child: Text(user['email'].toString(), style: TextStyle(fontSize: 13, color: Colors.grey.shade600))),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (!isAdmin)
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: IconButton(
+                                  icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade400),
+                                  onPressed: () => _deleteUser(user['id'].toString(), user['nom'].toString()),
+                                  tooltip: 'Supprimer',
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   );

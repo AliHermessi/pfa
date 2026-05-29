@@ -5,8 +5,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../../models/mecanicien.dart';
-import '../../models/intervention.dart';
 import 'intervention_form_screen.dart';
+import 'mecanicien_details_screen.dart';
 
 class CarteMecaniciensScreen extends StatefulWidget {
   const CarteMecaniciensScreen({super.key});
@@ -17,26 +17,21 @@ class CarteMecaniciensScreen extends StatefulWidget {
 
 class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
     with SingleTickerProviderStateMixin {
-  // ── Carte ──────────────────────────────────────────────────────────────────
   final MapController _mapController = MapController();
 
-  // Position par défaut : Tunis centre
   static const LatLng _defaultCenter = LatLng(36.8190, 10.1658);
   LatLng _center = _defaultCenter;
   double _zoom = 13.0;
 
   LatLng? _userPosition;
 
-  // ── Données ────────────────────────────────────────────────────────────────
   List<Mecanicien> _mecaniciens = [];
   StreamSubscription? _dbSubscription;
 
-  // ── UI state ───────────────────────────────────────────────────────────────
   bool _disponiblesOnly = false;
   Mecanicien? _selectedMecanicien;
   bool _loadingGps = true;
 
-  // ── Animation badge GPS ────────────────────────────────────────────────────
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnim;
 
@@ -44,7 +39,6 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
   void initState() {
     super.initState();
 
-    // Animation pulsante pour le marker utilisateur
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -63,7 +57,6 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
     super.dispose();
   }
 
-  // ── Obtenir la position GPS de l'utilisateur ───────────────────────────────
   Future<void> _getUserLocation() async {
     setState(() => _loadingGps = true);
     try {
@@ -78,8 +71,7 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
       }
 
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
 
       final userLatLng = LatLng(pos.latitude, pos.longitude);
@@ -96,7 +88,6 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
     }
   }
 
-  // ── Écouter les mécaniciens en temps réel depuis Firebase ─────────────────
   void _listenMecaniciens() {
     final ref = FirebaseDatabase.instance.ref('mecaniciens');
     _dbSubscription = ref.onValue.listen((event) {
@@ -114,7 +105,6 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
     });
   }
 
-  // ── Liste filtrée ──────────────────────────────────────────────────────────
   List<Mecanicien> get _filtered {
     return _disponiblesOnly
         ? _mecaniciens.where((m) => m.disponible).toList()
@@ -125,16 +115,13 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
     if (m.latitude != null && m.longitude != null) {
       return LatLng(m.latitude!, m.longitude!);
     }
-    // Fallback déterministe autour de Tunis centre
     final double offsetLat = (m.id.hashCode % 100) * 0.0004 - 0.02;
     final double offsetLng = (m.id.hashCode % 80) * 0.0004 - 0.016;
-    return LatLng(_defaultCenter.latitude + offsetLat,
-        _defaultCenter.longitude + offsetLng);
+    return LatLng(_defaultCenter.latitude + offsetLat, _defaultCenter.longitude + offsetLng);
   }
 
   int get _avecPosition => _mecaniciens.where((m) => m.hasLiveLocation).length;
 
-  // ── Centrer sur l'utilisateur ──────────────────────────────────────────────
   void _centerOnUser() {
     if (_userPosition != null) {
       _mapController.move(_userPosition!, 15.0);
@@ -143,27 +130,11 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
     }
   }
 
-  // ── Naviguer vers le formulaire d'intervention ────────────────────────────
   void _choisirMecanicien(Mecanicien m) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => InterventionFormScreen(
-          intervention: Intervention(
-            id: '',
-            vehiculeId: '',
-            vehiculeNom: '',
-            userId: '',
-            type: InterventionType.vidange,
-            description: '',
-            pieces: [],
-            prixEstime: 0,
-            date: DateTime.now(),
-            statut: InterventionStatut.enAttente,
-            mecanicienId: m.id,
-            mecanicienNom: m.nom,
-          ),
-        ),
+        builder: (_) => InterventionFormScreen(initialMecanicien: m),
       ),
     );
   }
@@ -181,16 +152,14 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
         ),
         title: const Text(
           'Carte — Mécaniciens',
-          style: TextStyle(
-              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         actions: [
-          // Compteur en ligne
           Container(
             margin: const EdgeInsets.only(right: 14),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
+              color: Colors.white.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -200,10 +169,7 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
                 const SizedBox(width: 6),
                 Text(
                   '$_avecPosition en ligne',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600),
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -212,24 +178,18 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
       ),
       body: Column(
         children: [
-          // ── Barre filtre ──────────────────────────────────────────────────
           Container(
             color: const Color(0xFF1565C0),
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
             child: Row(
               children: [
-                // Toggle disponibles
                 GestureDetector(
-                  onTap: () =>
-                      setState(() => _disponiblesOnly = !_disponiblesOnly),
+                  onTap: () => setState(() => _disponiblesOnly = !_disponiblesOnly),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 220),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                     decoration: BoxDecoration(
-                      color: _disponiblesOnly
-                          ? Colors.white
-                          : Colors.white.withOpacity(0.18),
+                      color: _disponiblesOnly ? Colors.white : Colors.white.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -238,9 +198,7 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
                         Icon(
                           Icons.check_circle_outline,
                           size: 14,
-                          color: _disponiblesOnly
-                              ? const Color(0xFF1565C0)
-                              : Colors.white,
+                          color: _disponiblesOnly ? const Color(0xFF1565C0) : Colors.white,
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -248,9 +206,7 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: _disponiblesOnly
-                                ? const Color(0xFF1565C0)
-                                : Colors.white,
+                            color: _disponiblesOnly ? const Color(0xFF1565C0) : Colors.white,
                           ),
                         ),
                       ],
@@ -258,45 +214,32 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
                   ),
                 ),
                 const Spacer(),
-                // Légendes
                 _LegendDot(color: Colors.green.shade400, label: 'En ligne'),
                 const SizedBox(width: 12),
                 _LegendDot(color: Colors.red.shade400, label: 'Hors ligne'),
               ],
             ),
           ),
-
-          // ── Carte OpenStreetMap ───────────────────────────────────────────
           Expanded(
             child: ClipRRect(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(24),
-                topRight: Radius.circular(24),
-              ),
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
               child: Stack(
                 children: [
-                  // ── flutter_map ─────────────────────────────────────────
                   FlutterMap(
                     mapController: _mapController,
                     options: MapOptions(
                       initialCenter: _center,
                       initialZoom: _zoom,
-                      onTap: (_, __) =>
-                          setState(() => _selectedMecanicien = null),
+                      onTap: (_, __) => setState(() => _selectedMecanicien = null),
                     ),
                     children: [
-                      // Tuiles OpenStreetMap (100% gratuit)
                       TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.vroomlog.app',
                         maxZoom: 19,
                       ),
-
-                      // ── Markers mécaniciens ───────────────────────────
                       MarkerLayer(
                         markers: [
-                          // Marker utilisateur
                           if (_userPosition != null)
                             Marker(
                               point: _userPosition!,
@@ -308,22 +251,15 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
                                   scale: _pulseAnim.value,
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      color: Colors.blue.withOpacity(0.25),
+                                      color: Colors.blue.withValues(alpha: 0.25),
                                       shape: BoxShape.circle,
-                                      border: Border.all(
-                                          color: Colors.blue, width: 2.5),
+                                      border: Border.all(color: Colors.blue, width: 2.5),
                                     ),
-                                    child: const Icon(
-                                      Icons.person_pin_circle,
-                                      color: Colors.blue,
-                                      size: 28,
-                                    ),
+                                    child: const Icon(Icons.person_pin_circle, color: Colors.blue, size: 28),
                                   ),
                                 ),
                               ),
                             ),
-
-                          // Markers mécaniciens
                           ..._filtered.map((m) {
                             final isSelected = _selectedMecanicien?.id == m.id;
                             final pos = _getMecanicienPosition(m);
@@ -340,105 +276,68 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
                                   decoration: BoxDecoration(
-                                    color: isOnline
-                                        ? Colors.green.shade400
-                                        : Colors.red.shade400,
+                                    color: isOnline ? Colors.green.shade400 : Colors.red.shade400,
                                     shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? Colors.white
-                                          : Colors.transparent,
-                                      width: 3,
-                                    ),
+                                    border: Border.all(color: isSelected ? Colors.white : Colors.transparent, width: 3),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: (isOnline
-                                                ? Colors.green
-                                                : Colors.red)
-                                            .withOpacity(0.4),
+                                        color: (isOnline ? Colors.green : Colors.red).withValues(alpha: 0.4),
                                         blurRadius: isSelected ? 12 : 6,
                                         spreadRadius: isSelected ? 3 : 1,
                                       ),
                                     ],
                                   ),
-                                  child: const Icon(
-                                    Icons.build_rounded,
-                                    color: Colors.white,
-                                    size: 22,
-                                  ),
+                                  child: const Icon(Icons.build_rounded, color: Colors.white, size: 22),
                                 ),
                               ),
                             );
                           }),
                         ],
                       ),
-
-                      // Attribution OSM (obligatoire selon licence)
                       const RichAttributionWidget(
-                        attributions: [
-                          TextSourceAttribution('OpenStreetMap contributors'),
-                        ],
+                        attributions: [TextSourceAttribution('OpenStreetMap contributors')],
                       ),
                     ],
                   ),
-
-                  // ── Bouton centrer ────────────────────────────────────
                   Positioned(
                     right: 14,
                     bottom: _selectedMecanicien != null ? 240 : 20,
                     child: Column(
                       children: [
-                        // Zoom +
                         FloatingActionButton.small(
                           heroTag: 'zoomIn',
                           backgroundColor: Colors.white,
                           elevation: 4,
                           onPressed: () {
                             _zoom = (_zoom + 1).clamp(3.0, 19.0);
-                            _mapController.move(
-                                _mapController.camera.center, _zoom);
+                            _mapController.move(_mapController.camera.center, _zoom);
                           },
-                          child:
-                              const Icon(Icons.add, color: Color(0xFF1565C0)),
+                          child: const Icon(Icons.add, color: Color(0xFF1565C0)),
                         ),
                         const SizedBox(height: 6),
-                        // Zoom -
                         FloatingActionButton.small(
                           heroTag: 'zoomOut',
                           backgroundColor: Colors.white,
                           elevation: 4,
                           onPressed: () {
                             _zoom = (_zoom - 1).clamp(3.0, 19.0);
-                            _mapController.move(
-                                _mapController.camera.center, _zoom);
+                            _mapController.move(_mapController.camera.center, _zoom);
                           },
-                          child: const Icon(Icons.remove,
-                              color: Color(0xFF1565C0)),
+                          child: const Icon(Icons.remove, color: Color(0xFF1565C0)),
                         ),
                         const SizedBox(height: 6),
-                        // Ma position
                         FloatingActionButton.small(
                           heroTag: 'myPos',
                           backgroundColor: const Color(0xFF1565C0),
                           elevation: 4,
                           onPressed: _loadingGps ? null : _centerOnUser,
                           child: _loadingGps
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.my_location,
-                                  color: Colors.white),
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Icon(Icons.my_location, color: Colors.white),
                         ),
                       ],
                     ),
                   ),
-
-                  // ── Toast aucun mécanicien actif ──────────────────────
                   if (_avecPosition == 0 && _mecaniciens.isNotEmpty)
                     Positioned(
                       top: 14,
@@ -446,30 +345,19 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
                       right: 0,
                       child: Center(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(24)),
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.info_outline,
-                                  color: Colors.white70, size: 16),
+                              Icon(Icons.info_outline, color: Colors.white70, size: 16),
                               SizedBox(width: 8),
-                              Text(
-                                'Aucun mécanicien n\'a partagé sa position',
-                                style: TextStyle(
-                                    color: Colors.white, fontSize: 12),
-                              ),
+                              Text("Aucun mécanicien n'a partagé sa position", style: TextStyle(color: Colors.white, fontSize: 12)),
                             ],
                           ),
                         ),
                       ),
                     ),
-
-                  // ── Panel mécanicien sélectionné ─────────────────────
                   if (_selectedMecanicien != null)
                     Positioned(
                       left: 0,
@@ -477,10 +365,8 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
                       bottom: 0,
                       child: _MecanicienPanel(
                         mecanicien: _selectedMecanicien!,
-                        onChoisir: () =>
-                            _choisirMecanicien(_selectedMecanicien!),
-                        onClose: () =>
-                            setState(() => _selectedMecanicien = null),
+                        onChoisir: () => _choisirMecanicien(_selectedMecanicien!),
+                        onClose: () => setState(() => _selectedMecanicien = null),
                       ),
                     ),
                 ],
@@ -493,7 +379,6 @@ class _CarteMecaniciensScreenState extends State<CarteMecaniciensScreen>
   }
 }
 
-// ── Légende ────────────────────────────────────────────────────────────────────
 class _LegendDot extends StatelessWidget {
   final Color color;
   final String label;
@@ -503,40 +388,20 @@ class _LegendDot extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
+        Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 5),
-        Text(label,
-            style: const TextStyle(color: Colors.white70, fontSize: 11)),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
       ],
     );
   }
 }
 
-// ── Panel de détail mécanicien ─────────────────────────────────────────────────
 class _MecanicienPanel extends StatelessWidget {
   final Mecanicien mecanicien;
   final VoidCallback onChoisir;
   final VoidCallback onClose;
 
-  const _MecanicienPanel({
-    required this.mecanicien,
-    required this.onChoisir,
-    required this.onClose,
-  });
-
-  static const List<Color> _avatarColors = [
-    Color(0xFF1565C0),
-    Color(0xFF00695C),
-    Color(0xFF4A148C),
-    Color(0xFFE65100),
-  ];
-
-  Color get _avatarColor =>
-      _avatarColors[(mecanicien.id.hashCode % _avatarColors.length).abs()];
+  const _MecanicienPanel({required this.mecanicien, required this.onChoisir, required this.onClose});
 
   @override
   Widget build(BuildContext context) {
@@ -545,28 +410,14 @@ class _MecanicienPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.18),
-            blurRadius: 24,
-            offset: const Offset(0, -6),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 24, offset: const Offset(0, -6))],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle
           Padding(
             padding: const EdgeInsets.only(top: 10),
-            child: Container(
-              width: 38,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+            child: Container(width: 38, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -574,73 +425,41 @@ class _MecanicienPanel extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    // Avatar
-                    Container(
-                      width: 54,
-                      height: 54,
-                      decoration: BoxDecoration(
-                        color: _avatarColor,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          mecanicien.initiales,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20),
-                        ),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => MecanicienDetailsScreen(mecanicien: mecanicien)),
+                        );
+                      },
+                      child: CircleAvatar(
+                        radius: 27,
+                        backgroundColor: const Color(0xFF1565C0),
+                        child: Text(mecanicien.initiales, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
                       ),
                     ),
                     const SizedBox(width: 14),
-
-                    // Infos
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              Expanded(
-                                child: Text(
-                                  mecanicien.nom,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              // Badge dispo
+                              Expanded(child: Text(mecanicien.nom, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), overflow: TextOverflow.ellipsis)),
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: mecanicien.disponible
-                                      ? Colors.green.shade50
-                                      : Colors.red.shade50,
+                                  color: mecanicien.disponible ? Colors.green.shade50 : Colors.red.shade50,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.circle,
-                                        size: 7,
-                                        color: mecanicien.disponible
-                                            ? Colors.green
-                                            : Colors.red),
+                                    Icon(Icons.circle, size: 7, color: mecanicien.disponible ? Colors.green : Colors.red),
                                     const SizedBox(width: 4),
                                     Text(
-                                      mecanicien.disponible
-                                          ? 'Disponible'
-                                          : 'Occupé',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: mecanicien.disponible
-                                            ? Colors.green.shade700
-                                            : Colors.red.shade700,
-                                      ),
+                                      mecanicien.disponible ? 'Disponible' : 'Occupé',
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: mecanicien.disponible ? Colors.green.shade700 : Colors.red.shade700),
                                     ),
                                   ],
                                 ),
@@ -648,105 +467,58 @@ class _MecanicienPanel extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            mecanicien.specialite,
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.grey),
-                          ),
+                          Text(mecanicien.specialite, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                           const SizedBox(height: 5),
-                          // Étoiles
                           Row(
                             children: [
-                              ...List.generate(
-                                  5,
-                                  (i) => Icon(
-                                        i < mecanicien.note.floor()
-                                            ? Icons.star
-                                            : i < mecanicien.note
-                                                ? Icons.star_half
-                                                : Icons.star_border,
-                                        color: const Color(0xFFFFB300),
-                                        size: 14,
-                                      )),
+                              ...List.generate(5, (i) => Icon(
+                                i < mecanicien.note.floor() ? Icons.star : i < mecanicien.note ? Icons.star_half : Icons.star_border,
+                                color: const Color(0xFFFFB300),
+                                size: 14,
+                              )),
                               const SizedBox(width: 4),
-                              Text(
-                                '${mecanicien.note.toStringAsFixed(1)} (${mecanicien.nombreAvis} avis)',
-                                style: const TextStyle(
-                                    fontSize: 11, color: Colors.grey),
-                              ),
+                              Text('${mecanicien.note.toStringAsFixed(1)} (${mecanicien.nombreAvis} avis)', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                             ],
                           ),
                         ],
                       ),
                     ),
-
-                    // Bouton fermer
                     GestureDetector(
                       onTap: onClose,
                       child: Container(
                         padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.close,
-                            color: Colors.grey, size: 18),
+                        decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
+                        child: const Icon(Icons.close, color: Colors.grey, size: 18),
                       ),
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 14),
-
-                // ── Badges + Bouton choisir ─────────────────────────
                 Row(
                   children: [
-                    // Badge GPS en direct
                     if (mecanicien.hasLiveLocation)
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.green.shade200),
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.green.shade200)),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.location_on,
-                                color: Colors.green, size: 14),
+                            Icon(Icons.location_on, color: Colors.green, size: 14),
                             SizedBox(width: 4),
-                            Text(
-                              'En direct',
-                              style: TextStyle(
-                                color: Colors.green,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
+                            Text('En direct', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w700)),
                           ],
                         ),
                       ),
                     const Spacer(),
-                    // Bouton Choisir
                     ElevatedButton.icon(
                       onPressed: mecanicien.disponible ? onChoisir : null,
-                      icon: const Icon(Icons.build_circle,
-                          size: 16, color: Colors.white),
-                      label: const Text(
-                        'Choisir',
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
+                      icon: const Icon(Icons.build_circle, size: 16, color: Colors.white),
+                      label: const Text('Choisir', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF1565C0),
                         disabledBackgroundColor: Colors.grey.shade300,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                         elevation: 0,
                       ),
                     ),

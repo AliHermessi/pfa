@@ -11,6 +11,7 @@ import 'historique_screen.dart';
 import 'calendrier_screen.dart';
 import 'intervention_form_screen.dart';
 import 'carte_mecaniciens_screen.dart';
+import 'mecanicien_details_screen.dart';
 
 class MecaniciensScreen extends StatefulWidget {
   const MecaniciensScreen({super.key});
@@ -20,14 +21,13 @@ class MecaniciensScreen extends StatefulWidget {
 }
 
 class _MecaniciensScreenState extends State<MecaniciensScreen> {
-  int _currentIndex = 4;
+  final int _currentIndex = 4;
   String _searchQuery = '';
   String _selectedFilter = 'Tous';
   final TextEditingController _searchCtrl = TextEditingController();
 
   final List<String> _filters = ['Tous', 'Proche', 'Disponible', '5 étoiles'];
 
-  // ── Données réelles depuis Firebase ───────────────────────────────────────
   Stream<List<Mecanicien>> _getMecaniciensStream() {
     return FirebaseDatabase.instance.ref('mecaniciens').onValue.map((event) {
       final data = event.snapshot.value;
@@ -36,7 +36,7 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
       final list = map.entries
           .where((e) => e.value is Map)
           .map((e) => Mecanicien.fromMap(e.key as String, e.value as Map))
-          .where((m) => m.isApproved) // Seulement les mécaniciens approuvés
+          .where((m) => m.isApproved) 
           .toList();
       return list;
     });
@@ -66,7 +66,6 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
     return list;
   }
 
-
   void _onNavTap(int index) {
     if (index == _currentIndex) return;
     Widget screen;
@@ -94,26 +93,10 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => InterventionFormScreen(
-          intervention: Intervention(
-            id: '',
-            vehiculeId: '',
-            vehiculeNom: '',
-            userId: '',
-            type: InterventionType.vidange,
-            description: '',
-            pieces: [],
-            prixEstime: 0,
-            date: DateTime.now(),
-            statut: InterventionStatut.enAttente,
-            mecanicienId: m.id,
-            mecanicienNom: m.nom,
-          ),
-        ),
+        builder: (_) => InterventionFormScreen(initialMecanicien: m),
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +110,6 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
-          // ── Bouton bascule vers la carte ────────────────────────────
           Tooltip(
             message: 'Voir sur la carte',
             child: IconButton(
@@ -142,13 +124,13 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
+          const Padding(
+            padding: EdgeInsets.only(right: 12),
             child: Row(
               children: [
-                const Icon(Icons.location_on, color: Colors.white70, size: 16),
-                const SizedBox(width: 2),
-                const Text('Ariana',
+                Icon(Icons.location_on, color: Colors.white70, size: 16),
+                SizedBox(width: 2),
+                Text('Ariana',
                     style: TextStyle(color: Colors.white70, fontSize: 13)),
               ],
             ),
@@ -157,7 +139,6 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
       ),
       body: Column(
         children: [
-          // ── Search + Filtres ──────────────────────────────────────────
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
@@ -273,6 +254,14 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
                   itemBuilder: (_, i) => _MecanicienCard(
                     mecanicien: filtered[i],
                     onChoisir: () => _choisirMecanicien(filtered[i]),
+                    onProfileTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MecanicienDetailsScreen(mecanicien: filtered[i]),
+                        ),
+                      );
+                    },
                   ),
                 );
               },
@@ -289,15 +278,15 @@ class _MecaniciensScreenState extends State<MecaniciensScreen> {
   }
 }
 
-// ── Mecanicien Card ──────────────────────────────────────────────────────────
-
 class _MecanicienCard extends StatelessWidget {
   final Mecanicien mecanicien;
   final VoidCallback onChoisir;
+  final VoidCallback onProfileTap;
 
   const _MecanicienCard({
     required this.mecanicien,
     required this.onChoisir,
+    required this.onProfileTap,
   });
 
   static const List<Color> _avatarColors = [
@@ -329,25 +318,26 @@ class _MecanicienCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Avatar
-          Container(
-            width: 48,
-            height: 48,
-            decoration:
-                BoxDecoration(color: _avatarColor, shape: BoxShape.circle),
-            child: Center(
-              child: Text(
-                mecanicien.initiales,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16),
+          GestureDetector(
+            onTap: onProfileTap,
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration:
+                  BoxDecoration(color: _avatarColor, shape: BoxShape.circle),
+              child: Center(
+                child: Text(
+                  mecanicien.initiales,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16),
+                ),
               ),
             ),
           ),
           const SizedBox(width: 12),
 
-          // Infos
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -412,7 +402,6 @@ class _MecanicienCard extends StatelessWidget {
             ),
           ),
 
-          // Actions
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

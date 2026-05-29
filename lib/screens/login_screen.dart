@@ -3,6 +3,7 @@ import '../services/auth_service.dart';
 import 'register_screen.dart';
 import 'user/user_dashboard_screen.dart';
 import 'mecanic/mecanic_dashboard.dart';
+import 'mecanic/mecanic_pending_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -17,13 +18,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Préchauffer la connexion à la base de données pour gagner du temps au login
-    AuthService.getCurrentRole(); 
-  }
 
   @override
   void dispose() {
@@ -44,7 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // login() retourne le rôle ET vérifie l'approbation pour les mécaniciens
+      // login() retourne le rôle (ex: 'user', 'admin', 'mecanicien', 'pending_mecanicien')
       final role = await AuthService.login(email: email, password: password);
 
       if (!mounted) return;
@@ -58,6 +52,10 @@ class _LoginScreenState extends State<LoginScreen> {
         case 'mecanicien':
           destination = const MechanicDashboard();
           break;
+        case 'pending_mecanicien':
+          destination = const MecanicPendingScreen();
+          break;
+        case 'user':
         default:
           destination = const UserDashboardScreen();
       }
@@ -68,20 +66,17 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (e) {
       if (mounted) {
-        // Message spécial pour les mécaniciens en attente
-        final msg = e.toString().replaceFirst('Exception: ', '');
-        _showSnack(msg, duration: 5);
+        _showSnack(e.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showSnack(String msg, {int duration = 3}) {
+  void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        duration: Duration(seconds: duration),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -97,7 +92,6 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Header ─────────────────────────────────────────────────────
               Center(
                 child: Column(
                   children: [
@@ -122,8 +116,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 48),
-
-              // ── Champs ─────────────────────────────────────────────────────
               const Text('Email',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
@@ -136,7 +128,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-
               const Text('Mot de passe',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
@@ -162,8 +153,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-
-              // ── Bouton connexion ───────────────────────────────────────────
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -191,14 +180,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-
-              // ── Lien vers register ─────────────────────────────────────────
               Center(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('Pas encore de compte ? ',
-                        style: TextStyle(color: Colors.grey.shade600)),
+                    const Text('Pas encore de compte ? ',
+                        style: TextStyle(color: Colors.grey)),
                     GestureDetector(
                       onTap: () => Navigator.push(
                         context,

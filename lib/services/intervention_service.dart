@@ -5,7 +5,6 @@ import 'planning_service.dart';
 import 'notification_service.dart';
 
 class InterventionService {
-  // ✅ FIX : utiliser uniquement FirebaseDatabase.instance
   static final DatabaseReference _db = FirebaseDatabase.instance.ref();
 
   // ── Référence pour l'utilisateur connecté ─────────────────────────────────
@@ -120,13 +119,16 @@ class InterventionService {
 
   // ── Marquer comme terminé ─────────────────────────────────────────────────
   static Future<void> completeIntervention(Intervention intervention,
-      {double? finalPrice}) async {
+      {double? finalPrice, int? newMileage, int? nextVidangeKm}) async {
     final Map<String, dynamic> updates = {};
     updates['interventions/${intervention.userId}/${intervention.id}/statut'] =
         InterventionStatut.termine.index;
+    updates['interventions/${intervention.userId}/${intervention.id}/statutLabelDiagram'] = 'Terminé';
+
     if (intervention.mecanicienId != null) {
       updates['mecanic_interventions/${intervention.mecanicienId}/${intervention.id}/statut'] =
           InterventionStatut.termine.index;
+      updates['mecanic_interventions/${intervention.mecanicienId}/${intervention.id}/statutLabelDiagram'] = 'Terminé';
     }
 
     if (finalPrice != null) {
@@ -138,6 +140,26 @@ class InterventionService {
       }
     }
 
+    // Update vehicle info if provided
+    if (newMileage != null || nextVidangeKm != null) {
+      final vehiclePath = 'vehicles/${intervention.userId}/${intervention.vehiculeId}';
+      if (newMileage != null) {
+        updates['$vehiclePath/kilometrageActuel'] = newMileage;
+        updates['$vehiclePath/dernierMiseAJourKm'] = DateTime.now().millisecondsSinceEpoch;
+      }
+      if (nextVidangeKm != null) {
+        updates['$vehiclePath/kilometrageProchVidange'] = nextVidangeKm;
+      }
+      
+      // Send notification to user about car update
+      await NotificationService.sendNotification(
+        userId: intervention.userId,
+        titre: 'Véhicule mis à jour',
+        message: 'Le mécanicien a mis à jour les informations de votre ${intervention.vehiculeNom} suite à l\'intervention.',
+        interventionId: intervention.id,
+      );
+    }
+
     await _db.update(updates);
   }
 
@@ -145,15 +167,18 @@ class InterventionService {
   static Future<void> _updateStatusEverywhere(
       Intervention intervention, InterventionStatut status) async {
     final Map<String, dynamic> updates = {};
+    String label = status.name; // Basic fallback
 
     // Chemin utilisateur
     updates['interventions/${intervention.userId}/${intervention.id}/statut'] =
         status.index;
+    updates['interventions/${intervention.userId}/${intervention.id}/statutLabelDiagram'] = label;
 
     // Chemin mécanicien
     if (intervention.mecanicienId != null) {
       updates['mecanic_interventions/${intervention.mecanicienId}/${intervention.id}/statut'] =
           status.index;
+      updates['mecanic_interventions/${intervention.mecanicienId}/${intervention.id}/statutLabelDiagram'] = label;
     }
 
     await _db.update(updates);

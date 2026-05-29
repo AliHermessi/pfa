@@ -3,7 +3,7 @@ import 'package:firebase_database/firebase_database.dart';
 class AdminService {
   static final _db = FirebaseDatabase.instance.ref();
 
-  /// Récupère le revenu total (somme de prixEstime) pour les interventions terminées et payées, par mois.
+  /// Récupère le revenu total (10 DT par intervention terminée) par mois.
   /// Retourne une liste de 12 doubles (de Janvier à Décembre).
   static Future<List<double>> getMonthlyRevenue(int year) async {
     final snapshot = await _db.child('interventions').get();
@@ -16,7 +16,7 @@ class AdminService {
           userInterventions.forEach((_, interData) {
             if (interData is Map) {
               final status = interData['statut'];
-              final isPaid = interData['estPaye'] == true;
+              // final isPaid = interData['estPaye'] == true; // On peut garder ou pas selon si l'app prend les 10d seulement quand c'est payé
               final dateVal = interData['date'];
               
               bool isTermine = false;
@@ -27,7 +27,7 @@ class AdminService {
                 isTermine = statusStr == 'termine' || statusStr == '1';
               }
               
-              if (isTermine && isPaid && dateVal != null) {
+              if (isTermine && dateVal != null) {
                 try {
                   DateTime? date;
                   if (dateVal is int) {
@@ -42,8 +42,8 @@ class AdminService {
                   }
 
                   if (date.year == year) {
-                    final price = double.tryParse(interData['prixEstime']?.toString() ?? '0') ?? 0.0;
-                    revenues[date.month - 1] += price;
+                    // L'application prend 10 DT par intervention terminée
+                    revenues[date.month - 1] += 10.0;
                   }
                 } catch (_) {}
               }
@@ -157,6 +157,45 @@ class AdminService {
         }
       });
     }
+    return result;
+  }
+
+  /// Récupère les interventions d'un utilisateur spécifique (mécano ou client)
+  static Future<List<Map<String, dynamic>>> getInterventionsForUser(String userId, bool isMecanicien) async {
+    final snapshot = await _db.child('interventions').get();
+    List<Map<String, dynamic>> result = [];
+    
+    if (snapshot.exists && snapshot.value != null) {
+      final data = snapshot.value as Map<dynamic, dynamic>;
+      data.forEach((clientId, userInterventions) {
+        if (userInterventions is Map) {
+          userInterventions.forEach((interId, interData) {
+            if (interData is Map) {
+              bool match = false;
+              if (isMecanicien) {
+                match = interData['mecanicienId'] == userId;
+              } else {
+                match = clientId == userId;
+              }
+
+              if (match) {
+                result.add({
+                  'id': interId,
+                  'clientId': clientId,
+                  ...Map<String, dynamic>.from(interData),
+                });
+              }
+            }
+          });
+        }
+      });
+    }
+    // Trier par date décroissante
+    result.sort((a, b) {
+      final dateA = a['date']?.toString() ?? '';
+      final dateB = b['date']?.toString() ?? '';
+      return dateB.compareTo(dateA);
+    });
     return result;
   }
 }

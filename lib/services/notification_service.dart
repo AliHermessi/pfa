@@ -1,28 +1,86 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/app_notification.dart';
 
 class NotificationService {
   static final _db = FirebaseDatabase.instance.ref();
+  static final FlutterLocalNotificationsPlugin _localNotif = FlutterLocalNotificationsPlugin();
+  static bool _initialized = false;
 
-  /// Envoyer une notification à un utilisateur spécifique
+  static Future<void> init() async {
+    if (_initialized) return;
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+    );
+    await _localNotif.initialize(initializationSettings);
+    _initialized = true;
+  }
+
+  /// Envoyer une notification à un utilisateur spécifique (Firebase + Local)
   static Future<void> sendNotification({
     required String userId,
     required String titre,
     required String message,
+    NotificationGravite gravite = NotificationGravite.info,
     String? interventionId,
+    String? alerteId,
+    bool onlyLocal = false,
   }) async {
+    // 1. Local Notification (Always shown in notification bar)
+    await _showLocalNotification(titre, message);
+
+    if (onlyLocal) return;
+
+    // 2. Check for duplicates in Firebase (In-app notification page)
+    // We only skip if an identical unread notification exists
+    final snapshot = await _db.child('notifications/$userId').get();
+    if (snapshot.exists) {
+      final data = snapshot.value as Map<dynamic, dynamic>;
+      final exists = data.values.any((n) => 
+        n['titre'] == titre && 
+        n['message'] == message && 
+        n['estLu'] == false
+      );
+      if (exists) return; // Don't duplicate in the in-app list
+    }
+
+    // 3. Push to Firebase
     final ref = _db.child('notifications/$userId').push();
     final notif = AppNotification(
       id: ref.key!,
       userId: userId,
       titre: titre,
       message: message,
-      date: DateTime.now(),
-      lue: false,
+      dateEnvoi: DateTime.now(),
+      estLu: false,
+      gravite: gravite,
       interventionId: interventionId,
+      alerteId: alerteId,
     );
     await ref.set(notif.toMap());
+  }
+
+  static Future<void> _showLocalNotification(String title, String body) async {
+    await init();
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+      'autocare_channel_id',
+      'AutoCare Notifications',
+      importance: Importance.max,
+      priority: Priority.high,
+      showWhen: true,
+    );
+    const NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+    await _localNotif.show(
+      DateTime.now().millisecond,
+      title,
+      body,
+      platformChannelSpecifics,
+    );
   }
 
   /// Écouter les notifications de l'utilisateur connecté
@@ -40,23 +98,17 @@ class NotificationService {
           .map((e) => AppNotification.fromMap(e.key as String, e.value as Map))
           .toList();
 
-      // Trier par date décroissante (les plus récentes en premier)
-      list.sort((a, b) => b.date.compareTo(a.date));
+      list.sort((a, b) => b.dateEnvoi.compareTo(a.dateEnvoi));
       return list;
     });
   }
 
-  /// Marquer une notification comme lue
   static Future<void> markAsRead(String notificationId) async {
     final userUid = FirebaseAuth.instance.currentUser?.uid;
     if (userUid == null) return;
-
-    await _db.child('notifications/$userUid/$notificationId').update({
-      'lue': true,
-    });
+    await _db.child('notifications/$userUid/$notificationId').update({'estLu': true});
   }
 
-  /// Marquer toutes les notifications comme lues
   static Future<void> markAllAsRead() async {
     final userUid = FirebaseAuth.instance.currentUser?.uid;
     if (userUid == null) return;
@@ -66,7 +118,7 @@ class NotificationService {
       final map = snapshot.value as Map<dynamic, dynamic>;
       final Map<String, dynamic> updates = {};
       map.forEach((key, value) {
-        updates['$key/lue'] = true;
+        updates['$key/estLu'] = true;
       });
       await _db.child('notifications/$userUid').update(updates);
     }

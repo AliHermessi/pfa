@@ -1,26 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
-import 'screens/welcome_screen.dart';
 import 'screens/login_screen.dart';
-import 'screens/register_screen.dart';
+import 'screens/user/user_dashboard_screen.dart';
 import 'screens/mecanic/mecanic_dashboard.dart';
-
+import 'screens/admin/admin_dashboard_screen.dart';
+import 'services/notification_service.dart';
+import 'services/background_mileage_service.dart';
 
 void main() async {
-  // Cette ligne est obligatoire pour que Firebase puisse s'initialiser correctement avant l'application
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialisation de Firebase avec gestion de l'erreur duplicate-app
+  
+  // Initialize date formatting for French locales
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  } on FirebaseException catch (e) {
-    if (e.code != 'duplicate-app') rethrow;
-    // Firebase déjà initialisé (ex: hot restart) → on ignore
+    await initializeDateFormatting('fr_FR', null);
+    Intl.defaultLocale = 'fr_FR';
+  } catch (e) {
+    debugPrint("Intl initialization error: $e");
+  }
+  
+  // Initialize Firebase with check to prevent "duplicate-app" error on hot restart
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    debugPrint("Firebase initialization error: $e");
+  }
+  
+  // Initialize local notifications
+  try {
+    await NotificationService.init();
+  } catch (e) {
+    debugPrint("Notification initialization error: $e");
   }
 
+  // Initialize Background Mileage Service
+  try {
+    await BackgroundMileageService.initializeService();
+  } catch (e) {
+    debugPrint("Background service initialization error: $e");
+  }
+  
   runApp(const MyApp());
 }
 
@@ -30,20 +55,19 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Vroom Log',
+      title: 'AutoCare',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1976D2)),
         useMaterial3: true,
       ),
-      initialRoute: '/',
+      initialRoute: '/login',
       routes: {
-        '/': (context) => const WelcomeScreen(),
         '/login': (context) => const LoginScreen(),
-        '/register': (context) => const RegisterScreen(),
-        '/mecanic_dashboard': (context) => const MechanicDashboard(),
+        '/user_dashboard': (context) => const UserDashboardScreen(),
+        '/mecanicien_dashboard': (context) => const MechanicDashboard(),
+        '/admin_dashboard': (context) => const AdminDashboardScreen(),
       },
     );
   }
 }
-

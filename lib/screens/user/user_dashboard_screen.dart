@@ -1,18 +1,23 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../models/vehicle.dart';
 import '../../models/intervention.dart';
 import '../../services/vehicle_service.dart';
 import '../../services/intervention_service.dart';
 import '../../models/app_notification.dart';
 import '../../services/notification_service.dart';
+import '../../services/reminder_service.dart';
 import 'notifications_screen.dart';
 import '../widgets/bottom_nav_bar.dart';
 import 'vehicles_screen.dart';
 import 'historique_screen.dart';
 import 'calendrier_screen.dart';
 import 'mecaniciens_screen.dart';
-import '../chat_screen.dart';
+import 'profile_screen.dart';
 
 class UserDashboardScreen extends StatefulWidget {
   const UserDashboardScreen({super.key});
@@ -22,11 +27,15 @@ class UserDashboardScreen extends StatefulWidget {
 }
 
 class _UserDashboardScreenState extends State<UserDashboardScreen> {
-  int _currentIndex = 0;
+  final int _currentIndex = 0;
   
   late final Stream<List<AppNotification>> _notificationsStream;
   late final Stream<List<Vehicle>> _vehiclesStream;
   late final Stream<List<Intervention>> _interventionsStream;
+
+  bool _isTracking = false;
+  String? _trackingVehicleName;
+  StreamSubscription? _serviceSubscription;
 
   @override
   void initState() {
@@ -34,15 +43,35 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     _notificationsStream = NotificationService.getUserNotificationsStream();
     _vehiclesStream = VehicleService.vehiclesStream();
     _interventionsStream = InterventionService.interventionsStream();
+    
+    _checkServiceStatus();
+
+    // Check for reminders when dashboard is loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ReminderService.checkAndGenerateReminders();
+    });
   }
 
-  // ── Nom de l'utilisateur connecté ────────────────────────────────────────
+  Future<void> _checkServiceStatus() async {
+    final isRunning = await FlutterBackgroundService().isRunning();
+    if (mounted) {
+      setState(() {
+        _isTracking = isRunning;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _serviceSubscription?.cancel();
+    super.dispose();
+  }
+
   String get _userName {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return 'Utilisateur';
-    // Utilise le displayName si disponible, sinon la partie avant @ de l'email
     if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
-      return user.displayName!.trim().split(' ').first; // Prénom seulement
+      return user.displayName!.trim().split(' ').first;
     }
     return user.email?.split('@').first ?? 'Utilisateur';
   }
@@ -72,20 +101,86 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  Future<void> _logout(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-    if (context.mounted) {
-      Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+  Future<void> _toggleTracking(List<Vehicle> vehicles) async {
+    if (_isTracking) {
+      FlutterBackgroundService().invoke('stopService');
+      setState(() {
+        _isTracking = false;
+        _trackingVehicleName = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mode conduite arrêté. Kilométrage synchronisé.')),
+      );
+      return;
     }
+
+    if (vehicles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez ajouter un véhicule d\'abord.')),
+      );
+      return;
+    }
+
+    // Request permissions
+    final status = await Permission.locationAlways.request();
+    if (!status.isGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Permission de localisation (Toujours) requise pour le suivi.')),
+      );
+      return;
+    }
+
+    if (vehicles.length == 1) {
+      _startService(vehicles.first);
+    } else {
+      _showVehicleSelectionDialog(vehicles);
+    }
+  }
+
+  void _showVehicleSelectionDialog(List<Vehicle> vehicles) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Choisir un véhicule'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: vehicles.map((v) => ListTile(
+            title: Text(v.nomComplet),
+            subtitle: Text(v.immatriculation),
+            onTap: () {
+              Navigator.pop(ctx);
+              _startService(v);
+            },
+          )).toList(),
+        ),
+      ),
+    );
+  }
+
+  void _startService(Vehicle vehicle) async {
+    final service = FlutterBackgroundService();
+    await service.startService();
+    service.invoke('setVehicle', {
+      'vehicleId': vehicle.id,
+      'userId': FirebaseAuth.instance.currentUser?.uid,
+    });
+    setState(() {
+      _isTracking = true;
+      _trackingVehicleName = vehicle.nomComplet;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final photoUrl = user?.photoURL;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1976D2),
         automaticallyImplyLeading: false,
+        elevation: 0,
         title: const Text(
           'AutoCare',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -95,7 +190,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
             stream: _notificationsStream,
             builder: (context, snapshot) {
               final notifications = snapshot.data ?? [];
-              final unreadCount = notifications.where((n) => !n.lue).length;
+              final unreadCount = notifications.where((n) => !n.estLu).length;
               return Stack(
                 alignment: Alignment.center,
                 children: [
@@ -138,10 +233,21 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            tooltip: 'Déconnexion',
-            onPressed: () => _logout(context),
+            icon: CircleAvatar(
+              radius: 14,
+              backgroundColor: Colors.white24,
+              backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+              child: photoUrl == null ? const Icon(Icons.person, color: Colors.white, size: 18) : null,
+            ),
+            tooltip: 'Mon Profil',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              );
+            },
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: StreamBuilder<List<Vehicle>>(
@@ -150,11 +256,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
           return StreamBuilder<List<Intervention>>(
             stream: _interventionsStream,
             builder: (context, interventionsSnapshot) {
-              if (vehiclesSnapshot.hasError) {
-                return Center(child: Text("Erreur Vehicules: ${vehiclesSnapshot.error}", style: const TextStyle(color: Colors.red)));
-              }
-              if (interventionsSnapshot.hasError) {
-                return Center(child: Text("Erreur Interventions: ${interventionsSnapshot.error}", style: const TextStyle(color: Colors.red)));
+              if (vehiclesSnapshot.hasError || interventionsSnapshot.hasError) {
+                return const Center(child: Text("Une erreur est survenue"));
               }
               if (vehiclesSnapshot.connectionState == ConnectionState.waiting || interventionsSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -162,9 +265,11 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
 
               final vehicles = vehiclesSnapshot.data ?? [];
               final interventions = interventionsSnapshot.data ?? [];
+              
               final alertVehicles = vehicles
-                  .where((v) => v.vidangeUrgente || v.sante < 0.5)
+                  .where((v) => v.vidangeUrgente)
                   .toList();
+                  
               final recentInterventions = interventions.take(3).toList();
 
               return SingleChildScrollView(
@@ -172,23 +277,20 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Greeting ──────────────────────────────────────────
                     Text(
                       'Bonjour, $_userName 👋',
                       style: const TextStyle(
-                        fontSize: 20,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF1976D2),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Voici l\'état de vos véhicules',
-                      style: TextStyle(fontSize: 13, color: Colors.grey),
-                    ),
                     const SizedBox(height: 16),
 
-                    // ── Stats cards ───────────────────────────────────────
+                    // Tracking Card
+                    _buildTrackingCard(vehicles),
+                    const SizedBox(height: 16),
+
                     Row(
                       children: [
                         _StatCard(
@@ -196,51 +298,65 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                           label: 'Véhicules',
                           color: const Color(0xFF1976D2),
                           icon: Icons.directions_car,
+                          onTap: () => _onNavTap(1),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 12),
                         _StatCard(
-                          value: alertVehicles.length.toString(),
+                          value: alertVehicles.length.toString(), 
                           label: 'Alertes',
                           color: const Color(0xFFE65100),
                           icon: Icons.warning_amber_rounded,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const NotificationsScreen(initialFilter: NotificationGravite.alerte),
+                            ),
+                          ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 12),
                         _StatCard(
                           value: interventions.length.toString(),
                           label: 'Interventions',
                           color: const Color(0xFF2E7D32),
                           icon: Icons.build,
+                          onTap: () => _onNavTap(2),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
 
-                    // ── Alertes ───────────────────────────────────────────
                     if (alertVehicles.isNotEmpty) ...[
                       const Text(
-                        'Alertes urgentes',
+                        'Rappels de Vidange',
                         style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.bold),
+                            fontSize: 16, fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 8),
-                      ...alertVehicles.map((v) => _AlertCard(vehicle: v)),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
+                      ...alertVehicles.map((v) => _AlertCard(
+                        vehicle: v,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const NotificationsScreen(initialFilter: NotificationGravite.alerte),
+                          ),
+                        ),
+                      )),
+                      const SizedBox(height: 24),
                     ],
 
-                    // ── Interventions récentes ─────────────────────────────
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
                           'Interventions récentes',
                           style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.bold),
+                              fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         TextButton(
                           onPressed: () => _onNavTap(2),
                           child: const Text('Voir tout',
                               style:
-                                  TextStyle(color: Color(0xFF1976D2))),
+                                  TextStyle(color: Color(0xFF1976D2), fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -248,7 +364,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                     if (recentInterventions.isEmpty)
                       const Center(
                         child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
+                          padding: EdgeInsets.symmetric(vertical: 32),
                           child: Text(
                             'Aucune intervention récente',
                             style: TextStyle(color: Colors.grey),
@@ -257,7 +373,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                       )
                     else
                       ...recentInterventions
-                          .map((i) => _InterventionCard(intervention: i)),
+                          .map((i) => _InterventionCard(
+                            intervention: i, 
+                            onTap: () => _onNavTap(2)
+                          )),
                   ],
                 ),
               );
@@ -271,56 +390,126 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
       ),
     );
   }
-}
 
-// ── Sub-widgets ─────────────────────────────────────────────────────────────
+  Widget _buildTrackingCard(List<Vehicle> vehicles) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: _isTracking ? Colors.green.shade50 : Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _isTracking ? Colors.green.withOpacity(0.2) : Colors.blue.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _isTracking ? Icons.location_on : Icons.directions_run,
+                color: _isTracking ? Colors.green : Colors.blue,
+                size: 30,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _isTracking ? 'Mode Conduite Actif' : 'Calcul Automatique KM',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _isTracking ? Colors.green.shade700 : Colors.black87,
+                    ),
+                  ),
+                  Text(
+                    _isTracking 
+                      ? 'Suivi en cours pour : ${_trackingVehicleName ?? 'Véhicule'}'
+                      : 'Utilisez le GPS pour mettre à jour votre kilométrage',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => _toggleTracking(vehicles),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isTracking ? Colors.red : const Color(0xFF1976D2),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text(_isTracking ? 'STOP' : 'START'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _StatCard extends StatelessWidget {
   final String value;
   final String label;
   final Color color;
   final IconData icon;
+  final VoidCallback onTap;
 
   const _StatCard({
     required this.value,
     required this.label,
     required this.color,
     required this.icon,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        elevation: 2,
+        shadowColor: Colors.black.withOpacity(0.1),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 24),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            Text(label,
-                style:
-                    const TextStyle(fontSize: 10, color: Colors.grey)),
-          ],
+          ),
         ),
       ),
     );
@@ -329,34 +518,63 @@ class _StatCard extends StatelessWidget {
 
 class _AlertCard extends StatelessWidget {
   final Vehicle vehicle;
-  const _AlertCard({required this.vehicle});
+  final VoidCallback onTap;
+  const _AlertCard({required this.vehicle, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
-        borderRadius: BorderRadius.circular(8),
-        border:
-            Border(left: BorderSide(color: const Color(0xFFE65100), width: 3)),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.orange.shade200),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_amber_rounded,
-              color: Color(0xFFE65100), size: 18),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              vehicle.vidangeUrgente
-                  ? '⚠ Vidange due — ${vehicle.nomComplet} (${vehicle.kmAvantVidange.abs()} km dépassé)'
-                  : '⚠ Santé faible — ${vehicle.nomComplet} (${(vehicle.sante * 100).toInt()}%)',
-              style: const TextStyle(
-                  fontSize: 12, color: Color(0xFFBF360C)),
-            ),
+      color: const Color(0xFFFFF3E0),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.warning_amber_rounded,
+                    color: Color(0xFFE65100), size: 20),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      vehicle.nomComplet,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Color(0xFFBF360C),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Vidange due (${vehicle.kmAvantVidange.abs()} km dépassé)',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFE65100),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 20, color: Color(0xFFE65100)),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -364,111 +582,57 @@ class _AlertCard extends StatelessWidget {
 
 class _InterventionCard extends StatelessWidget {
   final Intervention intervention;
-  const _InterventionCard({required this.intervention});
-
-  Color get _statutColor {
-    switch (intervention.statut) {
-      case InterventionStatut.termine:
-        return const Color(0xFF2E7D32);
-      case InterventionStatut.enCours:
-        return const Color(0xFF1976D2);
-      case InterventionStatut.planifie:
-        return const Color(0xFFE65100);
-      case InterventionStatut.enAttente:
-        return Colors.orange;
-      case InterventionStatut.annule:
-        return Colors.red;
-    }
-  }
-
-  Color get _statutBg {
-    switch (intervention.statut) {
-      case InterventionStatut.termine:
-        return const Color(0xFFE8F5E9);
-      case InterventionStatut.enCours:
-        return const Color(0xFFE3F2FD);
-      case InterventionStatut.planifie:
-        return const Color(0xFFFFF3E0);
-      case InterventionStatut.enAttente:
-        return Colors.orange.shade50;
-      case InterventionStatut.annule:
-        return Colors.red.shade50;
-    }
-  }
+  final VoidCallback onTap;
+  const _InterventionCard({required this.intervention, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade200),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
             children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1976D2).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.build_circle_outlined,
+                    color: Color(0xFF1976D2), size: 24),
+              ),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       intervention.typeLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14),
+                          fontWeight: FontWeight.bold, fontSize: 15),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
-                      '${intervention.vehiculeNom} · ${intervention.date.day}/${intervention.date.month}/${intervention.date.year}',
-                      style:
-                          const TextStyle(fontSize: 11, color: Colors.grey),
+                      '${intervention.vehiculeNom} · ${DateFormat('dd MMM yyyy').format(intervention.date)}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
                 ),
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _statutBg,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  intervention.statutLabel,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: _statutColor,
-                      fontWeight: FontWeight.w600),
-                ),
-              ),
+              const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
             ],
           ),
-          if (intervention.statut == InterventionStatut.planifie || intervention.statut == InterventionStatut.enCours) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 36,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => ChatScreen(intervention: intervention)),
-                  );
-                },
-                icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                label: const Text('Discuter avec le mécanicien', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF1976D2),
-                  side: const BorderSide(color: Color(0xFF1976D2)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../../services/admin_service.dart';
 import '../../services/export_service.dart';
 import '../login_screen.dart';
 import 'user_management_screen.dart';
+import 'mecanicien_profile_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -35,7 +36,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     
     _refreshFutures();
     
-    // Refresh chart data only when interventions change
     _interventionsStream.listen((event) {
       if (mounted) {
         _refreshFutures();
@@ -80,19 +80,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       if (path != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Fichier sauvegardé avec succès !"), 
+            content: const Text("Fichier sauvegardé avec succès !"), 
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            backgroundColor: Colors.green.shade600,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Erreur lors de l'exportation"), 
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            backgroundColor: Colors.red.shade600,
+            backgroundColor: Colors.green,
           ),
         );
       }
@@ -106,69 +97,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     if (_currentIndex == 2) title = 'Mécaniciens';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FC), // Soft modern background
+      backgroundColor: const Color(0xFFF4F7FC),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Color(0xFF1E293B), 
-            fontWeight: FontWeight.bold,
-            fontSize: 24,
-            letterSpacing: -0.5,
-          ),
-        ),
+        title: Text(title, style: const TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 24)),
         actions: [
           if (_currentIndex == 0) ...[
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: IconButton(
-                icon: Icon(Icons.picture_as_pdf, color: Colors.red.shade600, size: 20),
-                tooltip: 'Exporter en PDF',
-                onPressed: () => _exportData(false),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: IconButton(
-                icon: Icon(Icons.table_chart, color: Colors.green.shade600, size: 20),
-                tooltip: 'Exporter en Excel',
-                onPressed: () => _exportData(true),
-              ),
-            ),
-            const SizedBox(width: 16),
+            IconButton(icon: const Icon(Icons.picture_as_pdf, color: Colors.red), onPressed: () => _exportData(false)),
+            IconButton(icon: const Icon(Icons.table_chart, color: Colors.green), onPressed: () => _exportData(true)),
           ],
-          Container(
-            margin: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.logout, color: Color(0xFF64748B), size: 20),
-              onPressed: () async {
-                await AuthService.logout();
-                if (mounted) {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  );
-                }
-              },
-            ),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
+            onPressed: () async {
+              await AuthService.logout();
+              if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+            },
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: IndexedStack(
@@ -179,745 +126,287 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           _buildMecaniciensList(),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          child: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: (i) => setState(() => _currentIndex = i),
-            selectedItemColor: const Color(0xFF3B82F6),
-            unselectedItemColor: const Color(0xFF94A3B8),
-            backgroundColor: Colors.white,
-            elevation: 0,
-            selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
-            type: BottomNavigationBarType.fixed,
-            items: [
-              BottomNavigationBarItem(
-                icon: const Padding(padding: EdgeInsets.only(bottom: 4), child: Icon(Icons.space_dashboard_rounded)),
-                activeIcon: const Padding(padding: EdgeInsets.only(bottom: 4), child: Icon(Icons.space_dashboard_rounded, size: 28)),
-                label: 'Dashboard',
-              ),
-              BottomNavigationBarItem(
-                icon: const Padding(padding: EdgeInsets.only(bottom: 4), child: Icon(Icons.people_rounded)),
-                activeIcon: const Padding(padding: EdgeInsets.only(bottom: 4), child: Icon(Icons.people_rounded, size: 28)),
-                label: 'Utilisateurs',
-              ),
-              BottomNavigationBarItem(
-                icon: const Padding(padding: EdgeInsets.only(bottom: 4), child: Icon(Icons.engineering_rounded)),
-                activeIcon: const Padding(padding: EdgeInsets.only(bottom: 4), child: Icon(Icons.engineering_rounded, size: 28)),
-                label: 'Mécaniciens',
-              ),
-            ],
-          ),
-        ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (i) => setState(() => _currentIndex = i),
+        selectedItemColor: const Color(0xFF3B82F6),
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.dashboard_rounded), label: 'Dashboard'),
+          BottomNavigationBarItem(icon: Icon(Icons.people_rounded), label: 'Utilisateurs'),
+          BottomNavigationBarItem(icon: Icon(Icons.engineering_rounded), label: 'Mécaniciens'),
+        ],
       ),
     );
   }
 
-  // ── DASHBOARD AVEC GRAPHIQUES ─────────────────────────────────────────────
   Widget _buildDashboard() {
-    final currentYear = _currentYear;
     return StreamBuilder<DatabaseEvent>(
       stream: _mecaStream,
       builder: (context, mecaSnapshot) {
         return StreamBuilder<DatabaseEvent>(
           stream: _interventionsStream,
           builder: (context, interSnapshot) {
-            int totalMeca = 0, totalInterventions = 0, pending = 0;
+            int totalMeca = 0, totalInterventions = 0, pending = 0, completedInter = 0;
 
             if (mecaSnapshot.hasData && mecaSnapshot.data!.snapshot.value != null) {
-              final data = mecaSnapshot.data!.snapshot.value;
-              if (data is Map) {
-                data.forEach((_, v) {
-                  if (v is Map) {
-                    totalMeca++;
-                    if (v['isApproved'] == false) pending++;
-                  }
-                });
-              }
+              final data = mecaSnapshot.data!.snapshot.value as Map;
+              data.forEach((_, v) {
+                if (v is Map) {
+                  totalMeca++;
+                  if (v['isApproved'] == false) pending++;
+                }
+              });
             }
 
             if (interSnapshot.hasData && interSnapshot.data!.snapshot.value != null) {
-              final data = interSnapshot.data!.snapshot.value;
-              if (data is Map) {
-                data.forEach((_, v) {
-                  if (v is Map) totalInterventions += v.length;
-                });
-              }
+              final data = interSnapshot.data!.snapshot.value as Map;
+              data.forEach((_, userInter) {
+                if (userInter is Map) {
+                  userInter.forEach((_, inter) {
+                    if (inter is Map) {
+                      totalInterventions++;
+                      final status = inter['statut'];
+                      if (status == 1 || status.toString() == 'termine') completedInter++;
+                    }
+                  });
+                }
+              });
             }
 
-        return SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Vue Globale', 
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))
-              ),
-              const SizedBox(height: 16),
-              
-              if (pending > 0)
-                GestureDetector(
-                  onTap: () => setState(() => _currentIndex = 2),
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    margin: const EdgeInsets.only(bottom: 20),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFF59E0B), Color(0xFFF97316)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(color: const Color(0xFFF97316).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8)),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                          child: const Icon(Icons.warning_rounded, color: Colors.white, size: 24),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${pending} mécanicien(s) en attente', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)),
-                              const SizedBox(height: 4),
-                              Text('Appuyez pour examiner les profils', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.9))),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 16),
-                      ],
-                    ),
-                  ),
-                ),
-                
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isDesktop = constraints.maxWidth > 600;
-                  return Flex(
-                    direction: isDesktop ? Axis.horizontal : Axis.vertical,
+            double totalRevenue = completedInter * 10.0;
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (pending > 0)
+                    _buildPendingAlert(pending),
+                  
+                  const Text('Statistiques Clés', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                  const SizedBox(height: 16),
+                  
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    childAspectRatio: 1.5,
                     children: [
-                      Expanded(
-                        flex: isDesktop ? 1 : 0,
-                        child: _PremiumStatCard(
-                          title: 'Mécaniciens Actifs', 
-                          value: '${totalMeca - pending}', 
-                          icon: Icons.engineering_rounded, 
-                          gradient: const LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF2563EB)])
-                        ),
+                      _PremiumStatCard(
+                        title: 'Mécani. Actifs', 
+                        value: '${totalMeca - pending}', 
+                        icon: Icons.engineering, 
+                        color: const Color(0xFF3B82F6)
                       ),
-                      SizedBox(height: isDesktop ? 0 : 16, width: isDesktop ? 16 : 0),
-                      Expanded(
-                        flex: isDesktop ? 1 : 0,
-                        child: _PremiumStatCard(
-                          title: 'Interventions', 
-                          value: '$totalInterventions', 
-                          icon: Icons.build_circle_rounded, 
-                          gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)])
-                        ),
+                      _PremiumStatCard(
+                        title: 'Interventions', 
+                        value: '$totalInterventions', 
+                        icon: Icons.build_circle, 
+                        color: const Color(0xFF10B981)
+                      ),
+                      _PremiumStatCard(
+                        title: 'Revenu Total', 
+                        value: '$totalRevenue DT', 
+                        icon: Icons.monetization_on, 
+                        color: const Color(0xFF8B5CF6)
+                      ),
+                      _PremiumStatCard(
+                        title: 'En attente', 
+                        value: '$pending', 
+                        icon: Icons.hourglass_top, 
+                        color: const Color(0xFFF59E0B)
                       ),
                     ],
-                  );
-                }
+                  ),
+                  
+                  const SizedBox(height: 32),
+                  _buildChartContainer('Revenus (Commissions 10 DT)', _buildRevenueChart()),
+                  const SizedBox(height: 24),
+                  _buildChartContainer('Volume d\'Interventions', _buildInterventionsChart()),
+                  const SizedBox(height: 30),
+                ],
               ),
-              
-              const SizedBox(height: 32),
-              
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Revenus', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
-                          child: Text('$currentYear', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildRevenueChart(currentYear),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-              
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Interventions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
-                          child: Text('$currentYear', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildInterventionsChart(currentYear),
-                  ],
-                ),
-              ),
-              
-              const SizedBox(height: 30),
-            ],
-          ),
-        );
+            );
           },
         );
       },
     );
   }
 
-  Widget _buildRevenueChart(int year) {
+  Widget _buildPendingAlert(int count) {
+    return GestureDetector(
+      onTap: () => setState(() => _currentIndex = 2),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 24),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFD97706)]),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.notification_important, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text('$count nouveau(x) mécanicien(s) attendent votre validation', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+            const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChartContainer(String title, Widget chart) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20)]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+          const SizedBox(height: 24),
+          SizedBox(height: 200, child: chart),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRevenueChart() {
     return FutureBuilder<List<double>>(
       future: _revenueFuture,
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
-        
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final data = snapshot.data!;
         double maxY = data.reduce((a, b) => a > b ? a : b);
-        if (maxY == 0) maxY = 100; // default si vide
-
-        return SizedBox(
-          height: 200,
-          child: LineChart(
-            LineChartData(
-              gridData: FlGridData(
-                show: true, 
-                drawVerticalLine: false,
-                horizontalInterval: maxY / 4,
-                getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1, dashArray: [5, 5]),
-              ),
-              titlesData: FlTitlesData(
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    getTitlesWidget: (value, meta) {
-                      const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-                      if (value.toInt() >= 0 && value.toInt() < 12 && value.toInt() % 2 == 0) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 10.0),
-                          child: Text(months[value.toInt()], style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
-                        );
-                      }
-                      return const Text('');
-                    },
-                  ),
-                ),
-                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 40,
-                    getTitlesWidget: (value, meta) {
-                      if (value == maxY || value == 0) return const Text('');
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: Text('${value.toInt()} DT', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              minX: 0,
-              maxX: 11,
-              minY: 0,
-              maxY: maxY * 1.2,
-              lineBarsData: [
-                LineChartBarData(
-                  spots: List.generate(12, (index) => FlSpot(index.toDouble(), data[index])),
-                  isCurved: true,
-                  curveSmoothness: 0.35,
-                  gradient: const LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)]),
-                  barWidth: 4,
-                  isStrokeCapRound: true,
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
-                      radius: 4,
-                      color: Colors.white,
-                      strokeWidth: 2,
-                      strokeColor: const Color(0xFF3B82F6),
-                    ),
-                  ),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    gradient: LinearGradient(
-                      colors: [
-                        const Color(0xFF3B82F6).withOpacity(0.2),
-                        const Color(0xFF3B82F6).withOpacity(0.0),
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+        if (maxY < 50) maxY = 50;
+        return LineChart(LineChartData(
+          gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.shade100, strokeWidth: 1)),
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, m) => Text('${v.toInt()} ', style: const TextStyle(fontSize: 10, color: Colors.grey)))),
+            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, m) {
+              const months = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+              if (v % 2 == 0 && v < 12) return Text(months[v.toInt()], style: const TextStyle(fontSize: 10, color: Colors.grey));
+              return const Text('');
+            })),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
-        );
+          borderData: FlBorderData(show: false),
+          lineBarsData: [
+            LineChartBarData(
+              spots: List.generate(12, (i) => FlSpot(i.toDouble(), data[i])),
+              isCurved: true,
+              color: const Color(0xFF3B82F6),
+              barWidth: 3,
+              dotData: FlDotData(show: false),
+              belowBarData: BarAreaData(show: true, color: const Color(0xFF3B82F6).withOpacity(0.1)),
+            ),
+          ],
+          minY: 0,
+          maxY: maxY * 1.2,
+        ));
       },
     );
   }
 
-  Widget _buildInterventionsChart(int year) {
+  Widget _buildInterventionsChart() {
     return FutureBuilder<List<int>>(
       future: _interventionsCountFuture,
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
-        
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final data = snapshot.data!;
-        double maxY = data.reduce((a, b) => a > b ? a : b).toDouble();
-        if (maxY == 0) maxY = 5; // default si vide
-
-        return SizedBox(
-          height: 200,
-          child: BarChart(
-            BarChartData(
-              alignment: BarChartAlignment.spaceAround,
-              maxY: maxY * 1.2,
-              barTouchData: BarTouchData(
-                enabled: true,
-                touchTooltipData: BarTouchTooltipData(
-                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                    return BarTooltipItem(
-                      '${rod.toY.toInt()} interventions',
-                      const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    );
-                  },
-                ),
-              ),
-              titlesData: FlTitlesData(
-                show: true,
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    getTitlesWidget: (value, meta) {
-                      const months = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
-                      if (value.toInt() >= 0 && value.toInt() < 12) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 10.0),
-                          child: Text(months[value.toInt()], style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600)),
-                        );
-                      }
-                      return const Text('');
-                    },
-                  ),
-                ),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 28,
-                    getTitlesWidget: (value, meta) {
-                      if (value % 1 == 0 && value != 0) {
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: Text('${value.toInt()}', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
-                        );
-                      }
-                      return const Text('');
-                    },
-                  ),
-                ),
-                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              ),
-              gridData: FlGridData(
-                show: true,
-                drawVerticalLine: false,
-                horizontalInterval: maxY > 5 ? maxY / 5 : 1,
-                getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade100, strokeWidth: 1),
-              ),
-              borderData: FlBorderData(show: false),
-              barGroups: List.generate(12, (index) {
-                return BarChartGroupData(
-                  x: index,
-                  barRods: [
-                    BarChartRodData(
-                      toY: data[index].toDouble(),
-                      gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF34D399)], begin: Alignment.bottomCenter, end: Alignment.topCenter),
-                      width: 14,
-                      borderRadius: BorderRadius.circular(4),
-                      backDrawRodData: BackgroundBarChartRodData(
-                        show: true,
-                        toY: maxY * 1.2,
-                        color: Colors.grey.shade100,
-                      ),
-                    )
-                  ],
-                );
-              }),
-            ),
+        return BarChart(BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, getTitlesWidget: (v, m) => Text('${v.toInt()}', style: const TextStyle(fontSize: 10, color: Colors.grey)))),
+            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, m) {
+              const months = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+              return Text(months[v.toInt()], style: const TextStyle(fontSize: 10, color: Colors.grey));
+            })),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
-        );
+          borderData: FlBorderData(show: false),
+          barGroups: List.generate(12, (i) => BarChartGroupData(x: i, barRods: [BarChartRodData(toY: data[i].toDouble(), color: const Color(0xFF10B981), width: 12, borderRadius: BorderRadius.circular(4))])),
+        ));
       },
     );
   }
 
-  // ── LISTE MÉCANICIENS ─────────────────────────────────────────────────────
   Widget _buildMecaniciensList() {
     return StreamBuilder<DatabaseEvent>(
       stream: _mecaRef.onValue,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         List<Mecanicien> mecas = [];
         if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
-          final data = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
-          mecas = data.entries
-              .where((e) => e.value is Map)
-              .map((e) => Mecanicien.fromMap(e.key as String, e.value as Map))
-              .toList();
+          final data = snapshot.data!.snapshot.value as Map;
+          mecas = data.entries.map((e) => Mecanicien.fromMap(e.key as String, e.value as Map)).toList();
         }
-
-        final pending = mecas.where((m) => !m.isApproved).toList();
-        final approved = mecas.where((m) => m.isApproved).toList();
-
-        if (mecas.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
-                  child: const Icon(Icons.engineering_outlined, size: 64, color: Color(0xFF94A3B8)),
-                ),
-                const SizedBox(height: 16),
-                const Text('Aucun mécanicien inscrit', style: TextStyle(color: Color(0xFF64748B), fontSize: 16, fontWeight: FontWeight.w500)),
-              ],
-            ),
-          );
-        }
-
-        return ListView(
-          physics: const BouncingScrollPhysics(),
+        return ListView.builder(
           padding: const EdgeInsets.all(20),
-          children: [
-            if (pending.isNotEmpty) ...[
-              _SectionHeader(title: 'Demandes en attente', count: pending.length, color: const Color(0xFFF59E0B)),
-              const SizedBox(height: 12),
-              ...pending.map((m) => _MecanicienPremiumCard(mecanicien: m, isPending: true)),
-              const SizedBox(height: 24),
-            ],
-            if (approved.isNotEmpty) ...[
-              _SectionHeader(title: 'Mécaniciens Partenaires', count: approved.length, color: const Color(0xFF10B981)),
-              const SizedBox(height: 12),
-              ...approved.map((m) => _MecanicienPremiumCard(mecanicien: m, isPending: false)),
-            ],
-          ],
+          itemCount: mecas.length,
+          itemBuilder: (context, index) => _MecanicienPremiumCard(mecanicien: mecas[index]),
         );
       },
     );
   }
 }
 
-// ── Widgets internes ──────────────────────────────────────────────────────────
-
 class _PremiumStatCard extends StatelessWidget {
   final String title, value;
   final IconData icon;
-  final Gradient gradient;
-  
-  const _PremiumStatCard({required this.title, required this.value, required this.icon, required this.gradient});
-
+  final Color color;
+  const _PremiumStatCard({required this.title, required this.value, required this.icon, required this.color});
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: (gradient.colors.first).withOpacity(0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: color.withOpacity(0.05), blurRadius: 10)]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(14)),
-                child: Icon(icon, color: Colors.white, size: 24),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                child: const Icon(Icons.trending_up_rounded, color: Colors.white, size: 16),
-              ),
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(value, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white, height: 1.1)),
-              const SizedBox(height: 4),
-              Text(title, style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.9), fontWeight: FontWeight.w500)),
-            ],
-          ),
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
+          Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+          Text(title, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
         ],
       ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final int count;
-  final Color color;
-  const _SectionHeader({required this.title, required this.count, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(width: 4, height: 20, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4))),
-        const SizedBox(width: 12),
-        Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B), fontSize: 18)),
-        const SizedBox(width: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-          child: Text('$count', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-        ),
-      ],
     );
   }
 }
 
 class _MecanicienPremiumCard extends StatelessWidget {
   final Mecanicien mecanicien;
-  final bool isPending;
-  const _MecanicienPremiumCard({required this.mecanicien, required this.isPending});
-
-  Future<void> _approve(BuildContext context) async {
-    await FirebaseDatabase.instance.ref('mecaniciens/${mecanicien.id}').update({'isApproved': true});
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${mecanicien.nom} a été approuvé avec succès'), backgroundColor: Colors.green));
-    }
-  }
-
-  Future<void> _reject(BuildContext context) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Confirmer le refus'),
-        content: Text("Voulez-vous vraiment refuser et supprimer le profil de ${mecanicien.nom} ?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true), 
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            child: const Text('Refuser', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await FirebaseDatabase.instance.ref('mecaniciens/${mecanicien.id}').remove();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Le profil de ${mecanicien.nom} a été supprimé'), backgroundColor: Colors.red));
-      }
-    }
-  }
-
+  const _MecanicienPremiumCard({required this.mecanicien});
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 5))],
-        border: Border.all(color: isPending ? Colors.orange.shade200 : Colors.transparent, width: 1.5),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isPending ? [Colors.orange.shade300, Colors.orange.shade500] : [Colors.blue.shade300, Colors.blue.shade600],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(color: (isPending ? Colors.orange : Colors.blue).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4)),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(mecanicien.initiales, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(mecanicien.nom, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1E293B))),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.email_outlined, size: 14, color: Colors.grey.shade500),
-                          const SizedBox(width: 6),
-                          Expanded(child: Text(mecanicien.email, style: TextStyle(fontSize: 13, color: Colors.grey.shade600))),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MecanicienProfileScreen(mecanicien: mecanicien))),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: mecanicien.isApproved ? Colors.transparent : Colors.orange.shade100)),
+        child: Row(
+          children: [
+            CircleAvatar(backgroundColor: mecanicien.isApproved ? const Color(0xFF3B82F6) : Colors.orange, child: Text(mecanicien.initiales, style: const TextStyle(color: Colors.white))),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(mecanicien.nom, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(mecanicien.specialite, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+              ]),
             ),
-          ),
-          
-          Container(color: Colors.grey.shade100, height: 1),
-          
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10)),
-                        child: Icon(Icons.handyman_rounded, size: 16, color: Colors.grey.shade600),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Spécialité', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                            Text(mecanicien.specialite, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10)),
-                        child: Icon(Icons.phone_rounded, size: 16, color: Colors.grey.shade600),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Téléphone', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                            Text(mecanicien.telephone, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          if (isPending) ...[
-            Container(color: Colors.grey.shade100, height: 1),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _reject(context),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: const Text('Refuser', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => _approve(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: const Text('Approuver ✓', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            if (!mecanicien.isApproved)
+              const Icon(Icons.pending, color: Colors.orange)
+            else
+              const Icon(Icons.verified, color: Colors.blue),
           ],
-        ],
+        ),
       ),
     );
   }

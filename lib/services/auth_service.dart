@@ -1,10 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import '../models/utilisateur.dart';
+import '../models/client.dart';
+import '../models/mecanicien.dart';
+import '../models/administrateur.dart';
 
 class AuthService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
   static final DatabaseReference _db = FirebaseDatabase.instance.ref();
+  static final FirebaseStorage _storage = FirebaseStorage.instance;
 
   // ── REGISTER ────────────────────────────────────────────────────────────────
   static Future<void> register({
@@ -12,30 +19,33 @@ class AuthService {
     required String password,
     required String nom,
     required String role, // 'user', 'mecanicien', 'admin'
-    String? specialite,
     String? telephone,
+    // Diagram fields
+    String? adresse, // for Client
+    String? nomGarage, // for Mecanicien
+    String? adresseGarage, // for Mecanicien
+    String? specialite, // Kept as extra
   }) async {
-    // 1. Créer le compte Firebase Auth
     final credential = await _auth.createUserWithEmailAndPassword(
       email: email,
       password: password,
     );
     final uid = credential.user!.uid;
 
-    // 2. Mettre à jour le displayName
     await credential.user!.updateDisplayName(nom);
 
-    // 3. Enregistrer dans la bonne collection selon le rôle
     if (role == 'mecanicien') {
-      // Mécanicien → dans /mecaniciens avec isApproved: false
       await _db.child('mecaniciens/$uid').set({
         'id': uid,
         'nom': nom,
         'email': email,
-        'specialite': specialite ?? '',
         'telephone': telephone ?? '',
         'role': 'mecanicien',
-        'isApproved': false, // Doit être approuvé par l'admin
+        'nomGarage': nomGarage ?? '',
+        'adresseGarage': adresseGarage ?? '',
+        'statutCompte': 'en_attente', 
+        'isApproved': false,
+        'specialite': specialite ?? '',
         'disponible': true,
         'note': 0.0,
         'nombreAvis': 0,
@@ -43,20 +53,20 @@ class AuthService {
         'createdAt': DateTime.now().millisecondsSinceEpoch,
       });
     } else {
-      // User standard → dans /users
       await _db.child('users/$uid').set({
         'id': uid,
         'nom': nom,
         'email': email,
-        'role': role, // 'user' ou 'admin'
+        'telephone': telephone ?? '',
+        'role': role,
+        'adresse': adresse ?? '',
         'createdAt': DateTime.now().millisecondsSinceEpoch,
       });
     }
   }
 
-  // ── LOGIN ───────────────────────────────────────────────────────────────────
-  /// Retourne le rôle de l'utilisateur connecté.
-  /// Pour les mécaniciens non approuvés, throw une exception.
+  /// Tente de connecter l'utilisateur et retourne son rôle.
+  /// Si le compte est un mécanicien en attente, retourne 'pending_mecanicien'.
   static Future<String> login({
     required String email,
     required String password,
@@ -66,82 +76,116 @@ class AuthService {
       password: password,
     );
     final uid = credential.user!.uid;
-
-    try {
-      // On lance les deux recherches en parallèle pour gagner du temps
-      final Future<DataSnapshot> userFuture = _db.child('users/$uid').get();
-      final Future<DataSnapshot> mecaFuture = _db.child('mecaniciens/$uid').get();
-
-      final results = await Future.wait([userFuture, mecaFuture]).timeout(
-        const Duration(seconds: 4),
-        onTimeout: () => throw TimeoutException('Délai d\'attente dépassé'),
-      );
-
-      final userSnap = results[0];
-      final mecaSnap = results[1];
-
-      // 1. Vérifier si c'est un utilisateur/admin
-      if (userSnap.exists) {
-        final data = userSnap.value;
-        if (data is Map) {
-          return data['role'] as String? ?? 'user';
-        }
-      }
-
-      // 2. Vérifier si c'est un mécanicien
-      if (mecaSnap.exists) {
-        final data = mecaSnap.value;
-        if (data is Map) {
-          final isApproved = data['isApproved'] as bool? ?? false;
-          if (!isApproved) {
-            await _auth.signOut();
-            throw Exception(
-                'Votre compte mécanicien est en attente d\'approbation par l\'administrateur.');
-          }
-          return 'mecanicien';
-        }
-      }
-    } catch (e) {
-      print('AuthService: Erreur ou timeout lors de la récupération du rôle : $e');
+    final user = await getUser(uid);
+    
+    if (user == null) {
+      throw Exception("Données utilisateur introuvables.");
     }
 
-    // Fallback (pas dans la DB → user normal)
-    return 'user';
+    // Vérification spécifique pour l'approbation du mécanicien
+    if (user is Mecanicien && !user.isApproved) {
+      return 'pending_mecanicien';
+    }
+    
+    return user.role;
   }
 
-  // ── LOGOUT ──────────────────────────────────────────────────────────────────
   static Future<void> logout() async {
     await _auth.signOut();
   }
 
-  // ── GET CURRENT ROLE ────────────────────────────────────────────────────────
-  static Future<String> getCurrentRole() async {
+  static Future<Utilisateur?> getCurrentUser() async {
     final uid = _auth.currentUser?.uid;
-    if (uid == null) return 'none';
+    if (uid == null) return null;
+    return await getUser(uid);
+  }
 
+  static Future<Utilisateur?> getUser(String uid) async {
     try {
-      // Vérifier user/admin d'abord
+      // 1. Chercher dans 'users' (Clients et Admins)
       final userSnap = await _db.child('users/$uid').get();
       if (userSnap.exists) {
-        final data = userSnap.value;
-        if (data is Map) {
-          return data['role'] as String? ?? 'user';
+        final data = Map<String, dynamic>.from(userSnap.value as Map);
+        if (data['role'] == 'admin') {
+          return Administrateur.fromMap(uid, data);
+        } else {
+          return Client.fromMap(uid, data);
         }
       }
 
-      // Vérifier mécanicien
+      // 2. Chercher dans 'mecaniciens'
       final mecaSnap = await _db.child('mecaniciens/$uid').get();
       if (mecaSnap.exists) {
-        final data = mecaSnap.value;
-        if (data is Map) {
-          final isApproved = data['isApproved'] as bool? ?? false;
-          return isApproved ? 'mecanicien' : 'mecanicien_pending';
-        }
+        final data = Map<String, dynamic>.from(mecaSnap.value as Map);
+        return Mecanicien.fromMap(uid, data);
       }
     } catch (e) {
-      print('AuthService: Erreur getCurrentRole : $e');
+      print('AuthService: Erreur getUser : $e');
     }
+    return null;
+  }
 
-    return 'user';
+  static Future<String> getCurrentRole() async {
+    final user = await getCurrentUser();
+    if (user == null) return 'none';
+    
+    if (user is Mecanicien && !user.isApproved) {
+      return 'pending_mecanicien';
+    }
+    
+    return user.role;
+  }
+
+  // ── UPLOAD PHOTO ───────────────────────────────────────────────────────────
+  static Future<String?> uploadProfilePhoto(File imageFile) async {
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return null;
+
+      final ref = _storage.ref().child('profile_photos').child('$uid.jpg');
+      await ref.putFile(imageFile);
+      return await ref.getDownloadURL();
+    } catch (e) {
+      print('Error uploading photo: $e');
+      return null;
+    }
+  }
+
+  // ── UPDATE PROFILE ─────────────────────────────────────────────────────────
+  static Future<void> updateProfile({
+    required String nom,
+    required String telephone,
+    String? photoUrl,
+    String? adresse,
+    String? nomGarage,
+    String? adresseGarage,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final uid = user.uid;
+    final role = await getCurrentRole();
+
+    if (nom.isNotEmpty) await user.updateDisplayName(nom);
+    if (photoUrl != null) await user.updatePhotoURL(photoUrl);
+
+    final Map<String, dynamic> updates = {
+      'nom': nom,
+      'telephone': telephone,
+    };
+    if (photoUrl != null) updates['photoUrl'] = photoUrl;
+    if (adresse != null) updates['adresse'] = adresse;
+    if (nomGarage != null) updates['nomGarage'] = nomGarage;
+    if (adresseGarage != null) updates['adresseGarage'] = adresseGarage;
+    if (latitude != null) updates['latitude'] = latitude;
+    if (longitude != null) updates['longitude'] = longitude;
+
+    if (role == 'mecanicien' || role == 'pending_mecanicien') {
+      await _db.child('mecaniciens/$uid').update(updates);
+    } else {
+      await _db.child('users/$uid').update(updates);
+    }
   }
 }

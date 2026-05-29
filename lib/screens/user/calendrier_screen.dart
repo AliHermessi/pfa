@@ -75,20 +75,17 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
     });
   }
 
-  IconData _getInterventionIcon(InterventionType type) {
-    switch (type) {
-      case InterventionType.vidange:
+  IconData _getInterventionIcon(InterventionTask? task) {
+    if (task == null) return Icons.build_outlined;
+    switch (task.type) {
+      case InterventionType.fluide:
         return Icons.oil_barrel_outlined;
-      case InterventionType.pneus:
-        return Icons.tire_repair_outlined;
-      case InterventionType.batterie:
-        return Icons.battery_charging_full_outlined;
-      case InterventionType.freins:
-        return Icons.disc_full_outlined;
-      case InterventionType.filtreAir:
-        return Icons.air_outlined;
-      case InterventionType.autre:
+      case InterventionType.piece:
         return Icons.build_outlined;
+      case InterventionType.controle:
+        return Icons.fact_check_outlined;
+      case InterventionType.autre:
+        return Icons.more_horiz_rounded;
     }
   }
 
@@ -121,14 +118,15 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                       ? Colors.red
                       : const Color(0xFFE65100);
 
+      final task = i.tasks.isNotEmpty ? i.tasks.first : null;
+      final desc = task?.description ?? 'Aucune description';
+
       events.add(_CalendrierEvent(
         date: i.date,
         title: '${i.typeLabel} — ${i.vehiculeNom}',
-        subtitle: i.description.isEmpty
-            ? 'Statut: ${i.statutLabel}'
-            : i.description,
+        subtitle: desc,
         color: c,
-        icon: _getInterventionIcon(i.type),
+        icon: _getInterventionIcon(task),
       ));
     }
 
@@ -163,7 +161,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
     final firstDay = DateTime(_focusedMonth.year, _focusedMonth.month, 1);
     final daysInMonth =
         DateTime(_focusedMonth.year, _focusedMonth.month + 1, 0).day;
-    final startWeekday = firstDay.weekday; // 1=Mon ... 7=Sun
+    final startWeekday = firstDay.weekday; 
 
     final List<String> monthNames = [
       '',
@@ -218,13 +216,11 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
 
               return Column(
                 children: [
-                  // ── Calendrier ──────────────────────────────────────────────
                   Container(
                     color: const Color(0xFF1976D2),
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                     child: Column(
                       children: [
-                        // Navigation mois
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -247,7 +243,6 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                             ),
                           ],
                         ),
-                        // Jours de la semaine
                         Row(
                           children: ['L', 'M', 'M', 'J', 'V', 'S', 'D']
                               .map((d) => Expanded(
@@ -271,7 +266,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                               gridDelegate:
                                   const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 7,
-                                childAspectRatio: 1.2, // Légèrement plus large que haut
+                                childAspectRatio: 1.2,
                                 mainAxisSpacing: 2,
                                 crossAxisSpacing: 2,
                               ),
@@ -346,7 +341,6 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                     ),
                   ),
 
-                  // ── Liste des événements ────────────────────────────────────
                   Expanded(
                     child: filteredEvents.isEmpty
                         ? const Center(
@@ -392,8 +386,6 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
     );
   }
 }
-
-// ── Event Card ───────────────────────────────────────────────────────────────
 
 class _EventCard extends StatelessWidget {
   final _CalendrierEvent event;

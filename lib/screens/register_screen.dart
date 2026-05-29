@@ -15,13 +15,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
-  final TextEditingController _specialiteController = TextEditingController();
   final TextEditingController _telephoneController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   String _selectedRole = 'user'; // 'user' ou 'mecanicien'
+  String? _selectedSpecialty;
+
+  final List<String> _specialties = [
+    'Mécanique générale',
+    'Vidange et entretien',
+    'Freinage',
+    'Suspension et direction',
+    'Électricité et diagnostic',
+    'Climatisation',
+    'Pneumatiques',
+    'Carrosserie et peinture',
+    'Échappement',
+    'Boîte de vitesse',
+    'Autre'
+  ];
 
   @override
   void dispose() {
@@ -29,7 +43,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _specialiteController.dispose();
     _telephoneController.dispose();
     super.dispose();
   }
@@ -39,7 +52,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final confirm = _confirmPasswordController.text.trim();
-    final specialite = _specialiteController.text.trim();
     final telephone = _telephoneController.text.trim();
 
     // Validations
@@ -49,7 +61,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     if (_selectedRole == 'mecanicien' &&
-        (specialite.isEmpty || telephone.isEmpty)) {
+        (_selectedSpecialty == null || telephone.isEmpty)) {
       _showSnack('Veuillez remplir votre spécialité et téléphone');
       return;
     }
@@ -72,7 +84,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         password: password,
         nom: nom,
         role: _selectedRole,
-        specialite: _selectedRole == 'mecanicien' ? specialite : null,
+        specialite: _selectedRole == 'mecanicien' ? _selectedSpecialty : null,
         telephone: _selectedRole == 'mecanicien' ? telephone : null,
       );
 
@@ -259,10 +271,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               // ── Champs mécanicien uniquement ───────────────────────────────
               if (_selectedRole == 'mecanicien') ...[
-                _buildTextField(
-                  'Spécialité * (ex: Vidange, Freins, Climatisation)',
-                  _specialiteController,
-                  Icons.build_outlined,
+                const Text('Spécialité *',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87)),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _selectedSpecialty,
+                  items: _specialties.map((String s) {
+                    return DropdownMenuItem<String>(
+                      value: s,
+                      child: Text(s, style: const TextStyle(fontSize: 14)),
+                    );
+                  }).toList(),
+                  onChanged: (val) => setState(() => _selectedSpecialty = val),
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.build_outlined,
+                        size: 20, color: Colors.grey),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: Color(0xFF1976D2), width: 2)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 14),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  hint: const Text('Sélectionnez votre spécialité',
+                      style: TextStyle(color: Colors.grey, fontSize: 14)),
                 ),
                 const SizedBox(height: 16),
                 _buildTextField(
